@@ -1,13 +1,14 @@
-# Author : Ayeasha S. Dina
+# Author : Ayesha S. Dina
 
 import os
 import socket
 
 
-IP = "localhost"
-PORT = 4450
+# IP = "192.168.1.101" #"localhost"
+IP = "172.21.81.99"
+PORT = 4453
 ADDR = (IP,PORT)
-SIZE = 1024
+SIZE = 1024 ## byte .. buffer size
 FORMAT = "utf-8"
 SERVER_DATA_PATH = "server_data"
 
@@ -15,7 +16,7 @@ def main():
     
     client = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
     client.connect(ADDR)
-    while True:
+    while True:  ### multiple communications
         data = client.recv(SIZE).decode(FORMAT)
         cmd, msg = data.split("@")
         if cmd == "OK":
@@ -28,11 +29,14 @@ def main():
         data = data.split(" ")
         cmd = data[0]
 
-        if cmd == "HELP":
+        if cmd == "TASK":
             client.send(cmd.encode(FORMAT))
+
         elif cmd == "LOGOUT":
             client.send(cmd.encode(FORMAT))
             break
+      
+
 
 
     print("Disconnected from the server.")
