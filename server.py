@@ -8,8 +8,8 @@ import os
 import socket
 import threading
 
-IP = "localhost"
-PORT = 4450
+IP = "0.0.0.0"
+PORT = 4453
 ADDR = (IP,PORT)
 SIZE = 1024
 FORMAT = "utf-8"
@@ -47,6 +47,7 @@ def main():
     print("Starting the server")
     server = socket.socket(socket.AF_INET,socket.SOCK_STREAM) ## used IPV4 and TCP connection
     server.bind(ADDR) # bind the address
+    print(ADDR)
     server.listen() ## start listening
     print(f"server is listening on {IP}: {PORT}")
     while True:
