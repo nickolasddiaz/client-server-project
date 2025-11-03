@@ -1,8 +1,6 @@
-import os
 import socket
-import threading
-from type import commands
-from deliminer import deliminer, cmd_delim
+from type import Command, ResponseCode, cmd_str
+from encoder import Encoder
 
 
 # localhost if needed
@@ -10,46 +8,59 @@ IP = "localhost"
 PORT = 4453
 ADDR = (IP,PORT)
 SIZE = 1024 ## byte .. buffer size
-FORMAT = "utf-8"
-SERVER_DATA_PATH = "server_data"
 
 def main():
     
     client = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
     client.connect(ADDR)
     while True:  ### multiple communications
-        data = client.recv(SIZE).decode(FORMAT)
-        cmd, msg = data.split(cmd_delim,1)
-        if cmd == "OK":
-            print(f"{msg}")
-        elif cmd == "DISCONNECTED":
-            print(f"{msg}")
-            break
-        
+        encoded_data = client.recv(SIZE)
+        response: dict = Encoder.server_decode(encoded_data)
+
+        response_cmd: ResponseCode = response["cmd"]
+        msg: str = response["msg"]
+        print(msg)
+
+        if response_cmd != ResponseCode.OK:
+            print(response_cmd.desc, "\n")
+
+        match response_cmd.value:
+            case ResponseCode.DISCONNECT.value:
+                break
+            case ResponseCode.INVALID_CMD.value:
+                print(cmd_str())
+
         data = input("> ") 
         data = data.split(" ")
-        cmd = data[0]
+        cmd: str = data[0]
 
-        match cmd:
-            case commands.TASK.name:
-                client.send(cmd.encode(FORMAT)) 
-            case commands.LOGOUT.name:
-                client.send(cmd.encode(FORMAT)) 
-            case commands.HELP.name:
-                client.send(cmd.encode(FORMAT)) 
-            case commands.UPLOAD.name:
-                client.send(cmd.encode(FORMAT))
-            case commands.DOWNLOAD.name:
-                client.send(cmd.encode(FORMAT))
-            case commands.DELETE.name:
-                client.send(cmd.encode(FORMAT))
-            case commands.DIR.name:
-                client.send(cmd.encode(FORMAT))
-            case commands.SUBFOLDER.name:
-                client.send(cmd.encode(FORMAT))
+        match cmd.upper():
+            case Command.LOGOUT.name:
+                data: bytes = Encoder.encode({}, Command.LOGOUT)
+                client.send(data)
+            case Command.UPLOAD.name:
+                data: bytes = Encoder.encode({}, Command.UPLOAD)
+                client.send(data)
+            case Command.DOWNLOAD.name:
+                data: bytes = Encoder.encode({}, Command.DOWNLOAD)
+                client.send(data)
+            case Command.DELETE.name:
+                data: bytes = Encoder.encode({}, Command.DELETE)
+                client.send(data)
+            case Command.DIR.name:
+                data: bytes = Encoder.encode({}, Command.DIR)
+                client.send(data)
+            case Command.TREE.name:
+                data: bytes = Encoder.encode({}, Command.TREE)
+                client.send(data)
+            case Command.HELP.name:
+                data: bytes = Encoder.encode({}, Command.HELP)
+                client.send(data)
             # default case
             case _:
-                client.send(cmd.encode(FORMAT))
+                print(ResponseCode.INVALID_CMD.desc)
+                data: bytes = Encoder.encode({}, Command.HELP)
+                client.send(data)
 
 
 

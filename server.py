@@ -1,85 +1,59 @@
-import os
 import socket
 import threading
-from type import commands, cmd_delim
-from deliminer import deliminer, cmd_delim
-from pathlib import Path
 
+from encoder import Encoder
+from directory_func import list_directory, path_directory, str_path
+from type import Command, cmd_str, ResponseCode
 
 # localhost if needed
 IP = "0.0.0.0"
 PORT = 4453
 ADDR = (IP,PORT)
 SIZE = 1024
-FORMAT = "utf-8"
-SERVER_PATH = "server"
 
 ### to handle the clients
 def handle_client (conn,addr):
-
-
     print(f"[NEW CONNECTION] {addr} connected.")
-    conn.send(f"OK{cmd_delim}Welcome to the server".encode(FORMAT))
+    info: dict = {"msg": "Welcome to the server"}
+    data: bytes = Encoder.encode(info, Command.ECHO)
+    conn.send(data)
     while True:
-        data =  conn.recv(SIZE).decode(FORMAT)
-        data = data.split(cmd_delim,1)
-        cmd = data[0]
-       
-        send_data = f"OK{cmd_delim}"
+        encoded_data = conn.recv(SIZE)
+        if not encoded_data:
+            # If no data is received (client closed connection), break the loop
+            break
 
+        data: dict = Encoder.client_decode(encoded_data)
+
+        cmd: Command = data["cmd"]
         match cmd:
-            case commands.TASK.name:
-                send_data += "Task has been processed successfully.\n"
-                conn.send(send_data.encode(FORMAT))
-            case commands.LOGOUT.name:
-                send_data += "You have been logged out successfully.\n"
-                conn.send(send_data.encode(FORMAT))
-                print(f"{addr} disconnected")
-                conn.close()
-            case commands.HELP.name:
-                send_data += "Available commands:\n"
-                for command in commands:
-                    send_data += f"{command.name}\n"
-                conn.send(send_data.encode(FORMAT))
-            case commands.DIR.name:
-                script_dir = Path(__file__).parent.resolve()
-                folder_path = script_dir / "server_location" 
-
-                all_files = get_all_files(folder_path)
-                for f in all_files:
-                    send_data += f"{f}\n"
-                conn.send(send_data.encode(FORMAT))
+            case Command.LOGOUT:
+                info: dict = {"msg": "Disconnecting from server"}
+                data: bytes = Encoder.encode(info, ResponseCode.DISCONNECT)
+                conn.send(data)
+                break # gets out of the while(true) loop
+            case Command.DIR:
+                folder_path = path_directory()
+                info: dict = {"msg": str_path(list_directory(folder_path))}
+                data: bytes = Encoder.encode(info, ResponseCode.OK)
+                conn.send(data)
+            case Command.TREE:
+                folder_path = path_directory()
+                info: dict = {"msg": str_path(list_directory(folder_path, True))}
+                data: bytes = Encoder.encode(info, ResponseCode.OK)
+                conn.send(data)
+            case Command.HELP:
+                info: dict = {"msg": cmd_str()}
+                data: bytes = Encoder.encode(info, ResponseCode.OK)
+                conn.send(data)
             # default case
             case _:
-                send_data += "Invalid command received.\n"
-                conn.send(send_data.encode(FORMAT))
-                
-
-        
-
-
+                info: dict = {"msg": "Invalid command received"}
+                data: bytes = Encoder.encode(info, ResponseCode.INVALID_CMD)
+                conn.send(data)
 
     print(f"{addr} disconnected")
     conn.close()
-
-def get_all_files(base_directory):
-    """
-    Retrieves a list of all files with paths relative to the base_directory
-    using pathlib.
-    """
-    # Create a Path object for the base directory
-    base_path = Path(base_directory)
-    
-    file_list = []
-    # Use rglob to recursively find all files
-    for file_path_obj in base_path.rglob('*'):
-        if file_path_obj.is_file():
-            # The relative_to() method calculates the relative path
-            relative_path = file_path_obj.relative_to(base_path)
-            # Add the string representation of the path to our list
-            file_list.append(str(relative_path))
-            
-    return file_list
 
 
 def main():

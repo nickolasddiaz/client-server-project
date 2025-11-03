@@ -1,13 +1,43 @@
 from enum import Enum, auto, IntEnum
 
 
-#upload test.txt
+class Command(Enum):
+    ECHO = auto(), "Echo a message to yourself"
+    DELETE = auto(), "Delete a file"
+    DIR = auto(), "Show the directory"
+    TREE = auto(), "Show every file recursively"
+    DOWNLOAD = auto(), "Download a file"
+    HELP = auto(), "Show all available commands"
+    LOGOUT = auto(), "Log out"
+    UPLOAD = auto(), "Upload a file"
 
-class commands(Enum):
-    LOGOUT = auto()
-    TASK = auto()
-    DOWNLOAD = auto()
-    DELETE = auto()
-    UPLOAD = auto()
-    DIR = auto()
-    HELP = auto()
+    def __new__(cls, num: int, desc: str):
+        obj = object.__new__(cls)
+        obj._value_ = num
+        obj.desc = desc
+        return obj
+
+def cmd_str() -> str:
+    data = "Available Commands:\n"
+    for command in Command:
+        data += f"{command.name}: {command.desc}\n"
+    return data
+
+class ResponseCode(IntEnum):
+    OK = auto(), "Request accepted"
+    ERROR = auto(), "Request failed"
+    DISCONNECT = auto(), "Disconnect from server"
+    INVALID_CMD = auto(), "Invalid command"
+    INVALID_ARGS = auto(), "Invalid arguments"
+    LOGIN_NEEDED = auto(), "Login required"
+    PASS_NEEDED = auto(), "Password required"
+    USER_NEEDED = auto(), "Username required"
+
+    def __new__(cls, num: int, desc: str):
+        obj = int.__new__(cls)
+        obj._value_ = num
+        obj.desc = desc
+        return obj
+
+if __name__ == "__main__":
+    print(cmd_str())
