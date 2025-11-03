@@ -1,5 +1,14 @@
-from enum import Enum, auto, IntEnum
+from enum import Enum, IntEnum
 
+
+def auto() -> int:
+    """
+    Overriding the auto() function to make sure multiple enums have different values
+    """
+    if not hasattr(auto, 'counter'):
+        auto.counter = 0
+    auto.counter += 1
+    return auto.counter
 
 class Command(Enum):
     ECHO = auto(), "Echo a message to yourself"
@@ -23,6 +32,7 @@ def cmd_str() -> str:
         data += f"{command.name}: {command.desc}\n"
     return data
 
+
 class ResponseCode(IntEnum):
     OK = auto(), "Request accepted"
     ERROR = auto(), "Request failed"
@@ -34,10 +44,20 @@ class ResponseCode(IntEnum):
     USER_NEEDED = auto(), "Username required"
 
     def __new__(cls, num: int, desc: str):
-        obj = int.__new__(cls)
+        obj = int.__new__(cls,num)
         obj._value_ = num
         obj.desc = desc
         return obj
 
+class KeyData(IntEnum):
+    MSG = auto()
+    CMD = auto()
+
+    def __int__(self):
+        return self.value
+
 if __name__ == "__main__":
     print(cmd_str())
+    print(KeyData.MSG)
+    print(ResponseCode.INVALID_CMD)
+

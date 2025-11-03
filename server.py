@@ -3,7 +3,7 @@ import threading
 
 from encoder import Encoder
 from directory_func import list_directory, path_directory, str_path
-from type import Command, cmd_str, ResponseCode
+from type import Command, cmd_str, ResponseCode, KeyData
 
 # localhost if needed
 IP = "0.0.0.0"
@@ -14,8 +14,8 @@ SIZE = 1024
 ### to handle the clients
 def handle_client (conn,addr):
     print(f"[NEW CONNECTION] {addr} connected.")
-    info: dict = {"msg": "Welcome to the server"}
-    data: bytes = Encoder.encode(info, Command.ECHO)
+    info: dict = {KeyData.MSG: "Welcome to the server"}
+    data: bytes = Encoder.encode(info, ResponseCode.OK)
     conn.send(data)
     while True:
         encoded_data = conn.recv(SIZE)
@@ -25,30 +25,30 @@ def handle_client (conn,addr):
 
         data: dict = Encoder.client_decode(encoded_data)
 
-        cmd: Command = data["cmd"]
+        cmd: Command = data[KeyData.CMD]
         match cmd:
             case Command.LOGOUT:
-                info: dict = {"msg": "Disconnecting from server"}
+                info: dict = {KeyData.MSG.value: "Disconnecting from server"}
                 data: bytes = Encoder.encode(info, ResponseCode.DISCONNECT)
                 conn.send(data)
                 break # gets out of the while(true) loop
             case Command.DIR:
                 folder_path = path_directory()
-                info: dict = {"msg": str_path(list_directory(folder_path))}
+                info: dict = {KeyData.MSG: str_path(list_directory(folder_path))}
                 data: bytes = Encoder.encode(info, ResponseCode.OK)
                 conn.send(data)
             case Command.TREE:
                 folder_path = path_directory()
-                info: dict = {"msg": str_path(list_directory(folder_path, True))}
+                info: dict = {KeyData.MSG: str_path(list_directory(folder_path, True))}
                 data: bytes = Encoder.encode(info, ResponseCode.OK)
                 conn.send(data)
             case Command.HELP:
-                info: dict = {"msg": cmd_str()}
+                info: dict = {KeyData.MSG: cmd_str()}
                 data: bytes = Encoder.encode(info, ResponseCode.OK)
                 conn.send(data)
             # default case
             case _:
-                info: dict = {"msg": "Invalid command received"}
+                info: dict = {KeyData.MSG: "Invalid command received"}
                 data: bytes = Encoder.encode(info, ResponseCode.INVALID_CMD)
                 conn.send(data)
 

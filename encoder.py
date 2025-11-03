@@ -1,7 +1,7 @@
 import pickle
 from functools import partialmethod
 
-from type import Command, ResponseCode
+from type import Command, ResponseCode, KeyData
 
 
 class Encoder:
@@ -9,7 +9,7 @@ class Encoder:
     def encode(dict_items: dict, command: Command|ResponseCode) -> bytes:
 
         # overload a function both Enums Command and ResponseCode have a .value
-        dict_items["cmd"] = command.value # set the key "cmd" to an integer representing an enum
+        dict_items[KeyData.CMD] = command.value # set the key KeyData.CMD to an integer representing an enum
 
         return pickle.dumps(dict_items)
 
@@ -17,9 +17,9 @@ class Encoder:
     def _decode(encoded_items: bytes, is_server : bool) -> dict:
         dict_items: dict = pickle.loads(encoded_items)
         if is_server:
-            dict_items["cmd"] = ResponseCode(dict_items["cmd"]) # casting an int into an enum
+            dict_items[KeyData.CMD] = ResponseCode(dict_items[KeyData.CMD]) # casting an int into an enum
         else:
-            dict_items["cmd"] = Command(dict_items["cmd"])
+            dict_items[KeyData.CMD] = Command(dict_items[KeyData.CMD])
 
         return dict_items
 
@@ -38,12 +38,12 @@ if __name__ == "__main__":
     print("encoded_items:\n", encoded_items)
 
     # pass the encoded message into the decoder
-    decoded_items: dict = encoder.decode(encoded_items)
+    decoded_items: dict = Encoder.client_decode(encoded_items)
 
     print("\ndecoded_items:\n")
     for key, value in decoded_items.items():
         print(f"{key}: {value}")
 
-    command: Command = decoded_items["cmd"]
+    command: Command = decoded_items[KeyData.CMD]
     print("\nPrinting the command that was used")
     print(f"command name: {command.name}, command description: {command.desc}")

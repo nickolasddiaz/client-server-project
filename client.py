@@ -1,5 +1,5 @@
 import socket
-from type import Command, ResponseCode, cmd_str
+from type import Command, ResponseCode, cmd_str, KeyData
 from encoder import Encoder
 
 
@@ -17,17 +17,17 @@ def main():
         encoded_data = client.recv(SIZE)
         response: dict = Encoder.server_decode(encoded_data)
 
-        response_cmd: ResponseCode = response["cmd"]
-        msg: str = response["msg"]
+        response_cmd: ResponseCode = response[KeyData.CMD]
+        msg: str = response[KeyData.MSG]
         print(msg)
 
         if response_cmd != ResponseCode.OK:
             print(response_cmd.desc, "\n")
 
-        match response_cmd.value:
-            case ResponseCode.DISCONNECT.value:
+        match response_cmd:
+            case ResponseCode.DISCONNECT:
                 break
-            case ResponseCode.INVALID_CMD.value:
+            case ResponseCode.INVALID_CMD:
                 print(cmd_str())
 
         data = input("> ") 
