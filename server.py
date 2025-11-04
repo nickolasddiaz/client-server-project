@@ -1,56 +1,86 @@
+# server device runs this program
+
+from pathlib import Path
 import socket
 import threading
 
+from directory_func import DirectoryHelper
 from encoder import Encoder
-from directory_func import list_directory, path_directory, str_path
-from type import Command, cmd_str, ResponseCode, KeyData
+from type import Command, cmd_str, ResponseCode, KeyData, SIZE
 
 # localhost if needed
 IP = "0.0.0.0"
 PORT = 4453
 ADDR = (IP,PORT)
-SIZE = 1024
+Dir_Help = DirectoryHelper()
 
 ### to handle the clients
 def handle_client (conn,addr):
     print(f"[NEW CONNECTION] {addr} connected.")
     info: dict = {KeyData.MSG: "Welcome to the server"}
-    data: bytes = Encoder.encode(info, ResponseCode.OK)
-    conn.send(data)
+    out_data: bytes = Encoder.encode(info, ResponseCode.OK)
+    conn.send(out_data)
+
+    # delete these variables so it does not cause collisions in the future
+    del out_data, info
+
     while True:
         encoded_data = conn.recv(SIZE)
         if not encoded_data:
             # If no data is received (client closed connection), break the loop
             break
 
-        data: dict = Encoder.client_decode(encoded_data)
+        in_data: dict = Encoder.decode(encoded_data)
 
-        cmd: Command = data[KeyData.CMD]
+        cmd: Command = in_data[KeyData.CMD]
         match cmd:
             case Command.LOGOUT:
                 info: dict = {KeyData.MSG.value: "Disconnecting from server"}
-                data: bytes = Encoder.encode(info, ResponseCode.DISCONNECT)
-                conn.send(data)
+                out_data: bytes = Encoder.encode(info, ResponseCode.DISCONNECT)
+                conn.send(out_data)
                 break # gets out of the while(true) loop
             case Command.DIR:
-                folder_path = path_directory()
-                info: dict = {KeyData.MSG: str_path(list_directory(folder_path))}
-                data: bytes = Encoder.encode(info, ResponseCode.OK)
-                conn.send(data)
+                folder_path = Dir_Help.default_location
+                info: dict = {KeyData.MSG: Dir_Help.Dir_str(folder_path)}
+                out_data: bytes = Encoder.encode(info, ResponseCode.OK)
+                conn.send(out_data)
             case Command.TREE:
-                folder_path = path_directory()
-                info: dict = {KeyData.MSG: str_path(list_directory(folder_path, True))}
-                data: bytes = Encoder.encode(info, ResponseCode.OK)
-                conn.send(data)
+                folder_path = Dir_Help.default_location
+                info: dict = {KeyData.MSG: Dir_Help.Tree_str(folder_path)}
+                out_data: bytes = Encoder.encode(info, ResponseCode.OK)
+                conn.send(out_data)
             case Command.HELP:
                 info: dict = {KeyData.MSG: cmd_str()}
-                data: bytes = Encoder.encode(info, ResponseCode.OK)
-                conn.send(data)
+                out_data: bytes = Encoder.encode(info, ResponseCode.OK)
+                conn.send(out_data)
+            case Command.UPLOAD:
+                #directory = data[KeyData.RELATIVE_PATH]
+                directory: Path = Dir_Help.default_location
+                file_name: str = in_data[KeyData.FILE_NAME]
+
+                # FOR NOW: always sends OK, even if not OK
+                out_data: bytes = Encoder.encode({}, ResponseCode.OK)
+                conn.send(out_data)
+
+                # receives the file
+                worked:bool = Dir_Help.recv_file(conn, directory, file_name)
+
+                # sends back if it worked or not
+                if worked:
+                    info_2: dict = {KeyData.MSG: "File uploaded successfully"}
+                    out_data_2: bytes = Encoder.encode(info_2, ResponseCode.OK)
+                else:
+                    info_2: dict = {KeyData.MSG: "File upload failed"}
+                    out_data_2: bytes = Encoder.encode(info_2, ResponseCode.ERROR)
+
+                conn.send(out_data_2)
+
+            
             # default case
             case _:
                 info: dict = {KeyData.MSG: "Invalid command received"}
-                data: bytes = Encoder.encode(info, ResponseCode.INVALID_CMD)
-                conn.send(data)
+                out_data: bytes = Encoder.encode(info, ResponseCode.INVALID_CMD)
+                conn.send(out_data)
 
     print(f"{addr} disconnected")
     conn.close()

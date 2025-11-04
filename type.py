@@ -1,5 +1,8 @@
+# this file lists all commands to be used in client.py and server.py
+
 from enum import Enum, IntEnum
 
+SIZE = 1024
 
 def auto() -> int:
     """
@@ -11,6 +14,9 @@ def auto() -> int:
     return auto.counter
 
 class Command(Enum):
+    """
+    Enum for all the available commands
+    """
     ECHO = auto(), "Echo a message to yourself"
     DELETE = auto(), "Delete a file"
     DIR = auto(), "Show the directory"
@@ -34,6 +40,9 @@ def cmd_str() -> str:
 
 
 class ResponseCode(IntEnum):
+    """
+    Enum for all the available response codes
+    """
     OK = auto(), "Request accepted"
     ERROR = auto(), "Request failed"
     DISCONNECT = auto(), "Disconnect from server"
@@ -52,6 +61,8 @@ class ResponseCode(IntEnum):
 class KeyData(IntEnum):
     MSG = auto()
     CMD = auto()
+    RELATIVE_PATH = auto()
+    FILE_NAME = auto()
 
     def __int__(self):
         return self.value
