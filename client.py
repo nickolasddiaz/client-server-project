@@ -3,34 +3,38 @@
 import socket
 from pathlib import Path
 
-from directory_func import DirectoryHelper
+from directory_func import DirHelp
+from file_transfer import Transfer
+from relativepath import RelativePath
 from type import Command, ResponseCode, cmd_str, KeyData, SIZE
 from encoder import Encoder
-
-from tkinter import filedialog as fd
-import tkinter as tk
 
 
 # localhost if needed
 IP = "localhost"
 PORT = 4453
 ADDR = (IP,PORT)
-Dir_Help = DirectoryHelper()
 
 def main():
     
-    client = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-    client.connect(ADDR)
+    conn = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+    conn.connect(ADDR)
     have_input = True
+    current_dir: RelativePath = RelativePath.from_base()
     while True:  ### multiple communications
 
         if have_input:
-            encoded_data: bytes = client.recv(SIZE)
+            encoded_data: bytes = conn.recv(SIZE)
             response: dict = Encoder.decode(encoded_data)
 
             response_cmd: ResponseCode = response[KeyData.CMD]
-            msg: str = response[KeyData.MSG]
-            print(msg)
+            msg: str|None = response.get(KeyData.MSG)
+            if msg:
+                print(msg)
+
+            in_paths: list[RelativePath] | None = response.get(KeyData.REL_PATHS)
+            if in_paths:
+                print(DirHelp.str_paths(in_paths))
 
             if response_cmd != ResponseCode.OK:
                 print(response_cmd.desc, "\n")
@@ -49,32 +53,34 @@ def main():
         match in_cmd.upper():
             case Command.LOGOUT.name:
                 out_data: bytes = Encoder.encode({}, Command.LOGOUT)
-                client.send(out_data)
+                conn.send(out_data)
             case Command.DOWNLOAD.name:
                 
                 # server_paths = open_path_server()
                 out_data: bytes = Encoder.encode({}, Command.DOWNLOAD)
-                client.send(out_data)
+                conn.send(out_data)
             case Command.DELETE.name:
                 out_data: bytes = Encoder.encode({}, Command.DELETE)
-                client.send(out_data)
+                conn.send(out_data)
             case Command.DIR.name:
-                out_data: bytes = Encoder.encode({}, Command.DIR)
-                client.send(out_data)
+                out_data: bytes = Encoder.encode({KeyData.REL_PATH: current_dir}, Command.DIR)
+                conn.send(out_data)
             case Command.TREE.name:
-                out_data: bytes = Encoder.encode({}, Command.TREE)
-                client.send(out_data)
+                out_data: bytes = Encoder.encode({KeyData.REL_PATH: current_dir}, Command.TREE)
+                conn.send(out_data)
             case Command.HELP.name:
                 out_data: bytes = Encoder.encode({}, Command.HELP)
-                client.send(out_data)
+                conn.send(out_data)
             case Command.UPLOAD.name:
                 # sends upload directory to server, to be uploaded
-                client_paths: Path = Dir_Help.open_path_client()
-                out_data: bytes = Encoder.encode({KeyData.FILE_NAME: client_paths.name}, Command.UPLOAD)
-                client.send(out_data)
+                test = DirHelp.select_file_server(conn, current_dir, True, False)
+                client_paths: Path = DirHelp.select_file_client()
+                out_dict: dict = {KeyData.FILE_NAME: client_paths.name, KeyData.REL_PATH: current_dir}
+                out_data: bytes = Encoder.encode(out_dict, Command.UPLOAD)
+                conn.send(out_data)
 
                 # receives an OK to send the file
-                in_data_2 = client.recv(SIZE)
+                in_data_2 = conn.recv(SIZE)
                 response_2: dict = Encoder.decode(in_data_2)
                 response_cmd_2: ResponseCode = response_2[KeyData.CMD]
                 if response_cmd_2 == ResponseCode.OK:
@@ -84,10 +90,10 @@ def main():
                     continue
 
                 # sending the file
-                Dir_Help.send_file(client, client_paths)
+                Transfer.send_file(conn, client_paths)
 
                 # handle the server response after upload
-                in_data_3 = client.recv(SIZE)
+                in_data_3 = conn.recv(SIZE)
                 response_3: dict = Encoder.decode(in_data_3)
                 response_cmd_3: ResponseCode = response_3[KeyData.CMD]
                 if response_cmd_3 == ResponseCode.OK:
@@ -101,13 +107,13 @@ def main():
             case _:
                 print(ResponseCode.INVALID_CMD.desc)
                 data: bytes = Encoder.encode({}, Command.HELP)
-                client.send(data)
+                conn.send(data)
 
 
 
 
     print("Disconnected from the server.")
-    client.close() ## close the connection
+    conn.close() ## close the connection
 
 if __name__ == "__main__":
     main()

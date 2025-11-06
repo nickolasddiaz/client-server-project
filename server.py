@@ -4,15 +4,17 @@ from pathlib import Path
 import socket
 import threading
 
-from directory_func import DirectoryHelper
+from directory_func import DirHelp
 from encoder import Encoder
+from file_transfer import Transfer
 from type import Command, cmd_str, ResponseCode, KeyData, SIZE
+from relativepath import RelativePath
 
 # localhost if needed
 IP = "0.0.0.0"
 PORT = 4453
 ADDR = (IP,PORT)
-Dir_Help = DirectoryHelper()
+SERVER_DIR = RelativePath.from_base("server_location")
 
 ### to handle the clients
 def handle_client (conn,addr):
@@ -40,13 +42,13 @@ def handle_client (conn,addr):
                 conn.send(out_data)
                 break # gets out of the while(true) loop
             case Command.DIR:
-                folder_path = Dir_Help.default_location
-                info: dict = {KeyData.MSG: Dir_Help.Dir_str(folder_path)}
+                folder_path = in_data[KeyData.REL_PATH]
+                info: dict = {KeyData.REL_PATHS: DirHelp.list_directory(SERVER_DIR, folder_path, False)}
                 out_data: bytes = Encoder.encode(info, ResponseCode.OK)
                 conn.send(out_data)
             case Command.TREE:
-                folder_path = Dir_Help.default_location
-                info: dict = {KeyData.MSG: Dir_Help.Tree_str(folder_path)}
+                folder_path = in_data[KeyData.REL_PATH]
+                info: dict = {KeyData.REL_PATHS: DirHelp.list_directory(SERVER_DIR, folder_path, True)}
                 out_data: bytes = Encoder.encode(info, ResponseCode.OK)
                 conn.send(out_data)
             case Command.HELP:
@@ -54,8 +56,7 @@ def handle_client (conn,addr):
                 out_data: bytes = Encoder.encode(info, ResponseCode.OK)
                 conn.send(out_data)
             case Command.UPLOAD:
-                #directory = data[KeyData.RELATIVE_PATH]
-                directory: Path = Dir_Help.default_location
+                directory: RelativePath = in_data[KeyData.REL_PATH]
                 file_name: str = in_data[KeyData.FILE_NAME]
 
                 # FOR NOW: always sends OK, even if not OK
@@ -63,7 +64,7 @@ def handle_client (conn,addr):
                 conn.send(out_data)
 
                 # receives the file
-                worked:bool = Dir_Help.recv_file(conn, directory, file_name)
+                worked:bool = Transfer.recv_file(conn, SERVER_DIR, directory, file_name)
 
                 # sends back if it worked or not
                 if worked:

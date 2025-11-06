@@ -61,7 +61,8 @@ class ResponseCode(IntEnum):
 class KeyData(IntEnum):
     MSG = auto()
     CMD = auto()
-    RELATIVE_PATH = auto()
+    REL_PATH = auto()
+    REL_PATHS = auto()
     FILE_NAME = auto()
 
     def __int__(self):

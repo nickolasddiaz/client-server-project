@@ -1,58 +1,26 @@
 # this file holds the directory functions (helper functions to be used
 # ...in client.py and server.py)
 
-import os
 from pathlib import Path
 from tkinter import filedialog as fd
 import tkinter as tk
 
 from encoder import Encoder
-from type import SIZE, Command
+from relativepath import RelativePath
+from type import KeyData, Command, SIZE
 
 
-class RelativePath:
-    """
-    Basic tuple for that stores the relative path
-    is it a directory and how many bytes it is
-    Absolute path has these variables but when it becomes a relative path it looses them
-    """
-    def __init__(self,relative_path : Path, is_dir : bool, file_bytes : int) -> None:
-        self.relative_path = relative_path
-        self.is_dir = is_dir
-        self.file_bytes = file_bytes
-
-    def __str__(self):
-        if self.is_dir:
-            return f"{str(self.relative_path.name)}\t <DIR>\n"
-        else:
-            if self.file_bytes > 1000:
-                file_stat: str = f"{self.file_bytes / 1000} KB"
-            else:
-                file_stat: str = f"{self.file_bytes} B"
-            return f"{str(self.relative_path.name)}\t {file_stat}\n"
-
-
-
-class DirectoryHelper:
-    def __init__(self):
+class DirHelp:
+    @staticmethod
+    def list_directory(server_dir: RelativePath, base_dir: RelativePath, recursive: bool)-> list[RelativePath]:
         """
-        Runs only once defines the default_location location for the file server
+        Private function to take in a Path/directory and return the list of starting_path
+        Why list[tuple[Path, bool, int] because relative starting_path do not have a way to determine a directory
         """
-        script_dir = Path(__file__).resolve().parent / 'server_location'
-        if not script_dir.is_dir():
-            os.makedirs(script_dir, exist_ok=True) # Creates the directory if it doesn't exist
-
-        self.default_location = script_dir
-
-
-    def list_directory(self, base_directory: Path, recursive: bool)-> list[RelativePath]:
-        """
-        Private function to take in a Path/directory and return the list of relative_path
-        Why list[tuple[Path, bool, int] because relative relative_path do not have a way to determine a directory
-        """
-        base_path = Path(base_directory)
+        assert base_dir.str_dir, f"Input needs to be a directory not a file: {base_dir}"
 
         file_list = []
+        base_path: Path = server_dir.path() / base_dir.path()
 
         # rglob represents all files recursively while glob is not recursive
         iterator = base_path.rglob('*') if recursive else base_path.glob('*')
@@ -60,42 +28,23 @@ class DirectoryHelper:
         # potential features show files size and modification date
         # doesn't show any directory info
         for file_path_obj in iterator:
-            is_dir = False
-            file_bytes = 0
-            if file_path_obj.is_dir():
-                is_dir = True
-            else:
-                file_bytes = (self.default_location / file_path_obj).stat().st_size
-
-            relative_path = file_path_obj.relative_to(base_path)
-            file_list.append(RelativePath(relative_path, is_dir, file_bytes))
+            file_list.append(RelativePath.from_path(file_path_obj, server_dir.path()))
 
         return file_list
 
-    def Tree_str(self, base_directory: Path) -> str:
+    @staticmethod
+    def str_paths(path_list: list[RelativePath]) -> str:
         """
-        Helper function recursively returns a string from a directory
-        """
-        return self.str_paths(self.list_directory(base_directory, True))
-
-    def Dir_str(self, base_directory: Path) -> str:
-        """
-        Helper function returns a string from a directory
-        """
-        return self.str_paths(self.list_directory(base_directory, False))
-
-    def str_paths(self, path_list: list[RelativePath]) -> str:
-        """
-        Takes in a list of relative_path and pretty prints out
+        Takes in a list of starting_path and pretty prints out
         """
         pretty_path = ""
-        for relative_path in path_list:
-            pretty_path += str(relative_path)
+        for path in path_list:
+            pretty_path += str(path) + '\n'
 
         return pretty_path
 
-
-    def open_path_client(self) -> Path | None:
+    @staticmethod
+    def select_file_client() -> Path | None:
         """
         opens file dialog box, user selects 1 file from their device
         :return a Path or None if something went wrong
@@ -120,106 +69,106 @@ class DirectoryHelper:
         else:
             return None
 
-    def open_path_server(self, relative_path: list[RelativePath]) -> RelativePath | None:
+    @staticmethod
+    def get_dir(conn, starting_path: RelativePath) -> list[RelativePath]|None:
+        out_data: bytes = Encoder.encode({KeyData.REL_PATH: starting_path}, Command.DIR)
+        conn.send(out_data)
+
+        encoded_data: bytes = conn.recv(SIZE)
+        response: dict = Encoder.decode(encoded_data)
+
+        return response.get(KeyData.REL_PATHS)
+
+    @staticmethod
+    def select_file_server(conn, starting_path: RelativePath, select_dir: bool,
+                           select_file: bool) -> RelativePath | None:
         """
-        Displays a list of file relative_path from the server and lets the user select one.
+        Displays a list of file starting_path from the server and lets the user select one.
         Returns the selected Path object, or None if cancelled/something went wrong.
         """
 
-        if not relative_path:
+        if not starting_path or starting_path.isfile:
             return None
 
         selected_path = None
+
+        def refresh_listbox():
+            nonlocal paths
+            listbox.delete(0, tk.END)
+
+            paths = DirHelp.get_dir(conn, starting_path)
+            DirHelp.str_paths(paths)
+
+            # Add parent directory option if not at root
+            if starting_path.path() != Path('.'):
+                parent_item = starting_path.go_up()
+                listbox.insert(tk.END, f"📁 .. (Parent Directory)")
+                paths.insert(0, parent_item)
+
+            # Insert the file/directory names into the listbox
+            for p in paths[1:] if starting_path.path() != Path('.') else paths:
+                prefix = "📁" if p.isdir else "📄"
+                listbox.insert(tk.END, f"{prefix} {str(p)}")
+
+            path_label.config(text=f"Current: {starting_path.location}")
+
+        def on_double_click(event):
+            nonlocal starting_path, selected_path
+            selection = listbox.curselection()
+            if selection:
+                selected_item = paths[selection[0]]
+
+                if selected_item.isdir:
+                    # Navigate into the directory
+                    if selection[0] == 0 and starting_path.path() != Path('.'):
+                        starting_path = starting_path.go_up()
+                    else:
+                        # Go into subdirectory
+                        starting_path = selected_item
+                    refresh_listbox()
+                elif select_file:
+                    selected_path = selected_item
+                    root.destroy()
 
         def on_select():
             nonlocal selected_path
             selection = listbox.curselection()
             if selection:
-                selected_path = relative_path[selection[0]]
-            root.destroy()
+                selected_item = paths[selection[0]]
+
+                # Check if selection is valid based on select_dir and select_file
+                if (selected_item.isdir and select_dir) or (not selected_item.isdir and select_file):
+                    selected_path = selected_item
+                    root.destroy()
 
         def on_cancel():
             root.destroy()
 
         root = tk.Tk()
-        root.title("Select a file to download")
+        root.title("Select file/s")
+
+        # Label showing current start_path
+        path_label = tk.Label(root, text=f"Current Directory: {starting_path.location}", font=("Arial", 10, "bold"))
+        path_label.pack(pady=5)
 
         tk.Label(root, text="Available files on server:").pack(pady=5)
 
         listbox = tk.Listbox(root, width=80, height=15)
         listbox.pack(padx=10, pady=5)
 
-        # Insert the file names into the listbox
-        for p in relative_path:
-            listbox.insert(tk.END, str(p))
+        # Bind double-click event
+        listbox.bind('<Double-Button-1>', on_double_click)
 
-        tk.Button(root, text="Select", command=on_select).pack(side=tk.LEFT, padx=10, pady=10)
-        tk.Button(root, text="Cancel", command=on_cancel).pack(side=tk.RIGHT, padx=10, pady=10)
+        paths = []
+        refresh_listbox()
+
+        button_frame = tk.Frame(root)
+        button_frame.pack(pady=10)
+
+        tk.Button(button_frame, text="Select", command=on_select).pack(side=tk.LEFT, padx=10)
+        tk.Button(button_frame, text="Cancel", command=on_cancel).pack(side=tk.RIGHT, padx=10)
 
         root.mainloop()
         return selected_path
-    
 
-    def send_file(self, conn, file_path: Path) -> bool:
-        """
-        Upload a file, by reading a file from a path
-        """
-        if file_path.is_dir():
-            raise ValueError(f"Invalid input: '{file_path}' is a directory, not a file.")
-        elif not file_path.exists():
-            raise ValueError(f"Invalid input: '{file_path}' does not exist.")
 
-        with open(file_path, "rb") as fileToSend:
-            while True:
-                filedata = fileToSend.read(SIZE)
-                if not filedata:
-                    break
-                conn.send(filedata)
-
-            conn.send(b'EOF')
-
-        return True
-
-    def recv_file(self, conn, dir_path: Path, file_name: str) -> bool:
-        """
-        Downloads a file, by reading a file from a path
-        """
-
-        if dir_path.is_file():
-            raise ValueError(f"Invalid input: '{dir_path}' is a file, not a directory.")
-        elif not dir_path.exists():
-            raise ValueError(f"Invalid input: '{dir_path}' does not exist.")
-
-        with open(dir_path / file_name, "wb") as fileToWrite:
-            while True:
-                filedata = conn.recv(SIZE)
-                if not filedata:
-                    break
-                # Check if EOF marker is in the received data
-                if b'EOF' in filedata:
-                    # Write everything before the EOF marker
-                    fileToWrite.write(filedata.replace(b'EOF', b''))
-                    break
-                fileToWrite.write(filedata)
-
-        return True
-
-    
-if __name__ == "__main__":
-    """
-    Live demonstration of seeing and selecting files on a server 
-    """
-
-    Dir_Help = DirectoryHelper()
-
-    print(Dir_Help.Dir_str(Dir_Help.default_location))
-
-    # Gets all the list of file relative_path
-    files_on_server : list[RelativePath] = Dir_Help.list_directory(Dir_Help.default_location, False)
-
-    # opens the custom GUI file opener
-    chosen = Dir_Help.open_path_server(files_on_server)
-    if chosen:
-        print(f"User selected: {chosen}")
-    else:
-        print("No file selected.")
