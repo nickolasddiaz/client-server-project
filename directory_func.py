@@ -4,6 +4,7 @@
 from pathlib import Path
 from tkinter import filedialog as fd
 import tkinter as tk
+import tkinter.ttk as ttk
 
 from encoder import Encoder
 from relativepath import RelativePath
@@ -17,7 +18,7 @@ class DirHelp:
         Private function to take in a Path/directory and return the list of starting_path
         Why list[tuple[Path, bool, int] because relative starting_path do not have a way to determine a directory
         """
-        assert base_dir.str_dir, f"Input needs to be a directory not a file: {base_dir}"
+        assert base_dir.isdir, f"Input needs to be a directory not a file: {base_dir}"
 
         file_list = []
         base_path: Path = server_dir.path() / base_dir.path()
@@ -70,18 +71,22 @@ class DirHelp:
             return None
 
     @staticmethod
-    def get_dir(conn, starting_path: RelativePath) -> list[RelativePath]|None:
+    def get_dir(conn, starting_path: RelativePath, rtn_files:bool) -> list[RelativePath]:
         out_data: bytes = Encoder.encode({KeyData.REL_PATH: starting_path}, Command.DIR)
         conn.send(out_data)
 
         encoded_data: bytes = conn.recv(SIZE)
         response: dict = Encoder.decode(encoded_data)
 
-        return response.get(KeyData.REL_PATHS)
+        rel_paths: list[RelativePath] = response.get(KeyData.REL_PATHS)
+
+        if not rtn_files:
+            rel_paths = list(filter(lambda item: item.isdir, rel_paths))
+
+        return rel_paths
 
     @staticmethod
-    def select_file_server(conn, starting_path: RelativePath, select_dir: bool,
-                           select_file: bool) -> RelativePath | None:
+    def select_file_server(conn, starting_path: RelativePath, show_file: bool) -> list[RelativePath] | None:
         """
         Displays a list of file starting_path from the server and lets the user select one.
         Returns the selected Path object, or None if cancelled/something went wrong.
@@ -91,84 +96,112 @@ class DirHelp:
             return None
 
         selected_path = None
+        select_paths: list[RelativePath] = []
 
-        def refresh_listbox():
+        def refresh_treeview():
             nonlocal paths
-            listbox.delete(0, tk.END)
+            for item in treeview.get_children():
+                treeview.delete(item)
 
-            paths = DirHelp.get_dir(conn, starting_path)
+            paths = DirHelp.get_dir(conn, starting_path, show_file)
             DirHelp.str_paths(paths)
 
-            # Add parent directory option if not at root
+            # Add parent directory option
             if starting_path.path() != Path('.'):
                 parent_item = starting_path.go_up()
-                listbox.insert(tk.END, f"📁 .. (Parent Directory)")
                 paths.insert(0, parent_item)
+                treeview.insert(
+                    "", "end", iid="parent", text="📁 .. (Parent Directory)",
+                    values=("", "", "Directory", "")
+                )
 
-            # Insert the file/directory names into the listbox
-            for p in paths[1:] if starting_path.path() != Path('.') else paths:
+            # Insert current directory content
+            for i, p in enumerate(paths[1:] if starting_path.path() != Path('.') else paths):
                 prefix = "📁" if p.isdir else "📄"
-                listbox.insert(tk.END, f"{prefix} {str(p)}")
+                treeview.insert(
+                    "",
+                    "end",
+                    iid=str(i),
+                    text=f"{prefix} {p.true_name}",
+                    values=(f"{p.bytes} bytes", "Directory" if p.isdir else "File", p.time_str if p.isfile else "")
+                )
 
-            path_label.config(text=f"Current: {starting_path.location}")
+            path_label.config(text=f"Current Directory: {starting_path.location}\\")
 
         def on_double_click(event):
             nonlocal starting_path, selected_path
-            selection = listbox.curselection()
-            if selection:
-                selected_item = paths[selection[0]]
+            item_id = treeview.focus()
+            if not item_id:
+                return
 
-                if selected_item.isdir:
-                    # Navigate into the directory
-                    if selection[0] == 0 and starting_path.path() != Path('.'):
-                        starting_path = starting_path.go_up()
-                    else:
-                        # Go into subdirectory
-                        starting_path = selected_item
-                    refresh_listbox()
-                elif select_file:
-                    selected_path = selected_item
-                    root.destroy()
+            if item_id == "parent":
+                starting_path = starting_path.go_up()
+                refresh_treeview()
+                return
+
+            index = int(item_id)
+            selected_item = paths[index + (1 if starting_path.path() != Path('.') else 0)]
+
+            if selected_item.isdir:
+                starting_path = selected_item
+                refresh_treeview()
+
 
         def on_select():
-            nonlocal selected_path
-            selection = listbox.curselection()
-            if selection:
-                selected_item = paths[selection[0]]
+            selected_iids = treeview.selection()
+            for iid in selected_iids:
+                index = int(iid)
+                selected_item = paths[index + (1 if starting_path.path() != Path('.') else 0)]
+                select_paths.append(selected_item)
 
-                # Check if selection is valid based on select_dir and select_file
-                if (selected_item.isdir and select_dir) or (not selected_item.isdir and select_file):
-                    selected_path = selected_item
-                    root.destroy()
+            root.destroy()
+
 
         def on_cancel():
             root.destroy()
 
         root = tk.Tk()
         root.title("Select file/s")
+        root.geometry("700x400")
 
-        # Label showing current start_path
-        path_label = tk.Label(root, text=f"Current Directory: {starting_path.location}", font=("Arial", 10, "bold"))
-        path_label.pack(pady=5)
+        main_frame = ttk.Labelframe(root, padding=10, text="Available files on server:")
+        main_frame.pack(fill="both", expand=True)
 
-        tk.Label(root, text="Available files on server:").pack(pady=5)
+        path_label = ttk.Label(main_frame, text="")
+        path_label.pack(anchor="w", pady=5)
 
-        listbox = tk.Listbox(root, width=80, height=15)
-        listbox.pack(padx=10, pady=5)
+        # Treeview setup
+        columns = ("Size", "Type", "Modified")
+        treeview = ttk.Treeview(main_frame, columns=columns, show="tree headings", selectmode="extended")
+        treeview.heading("#0", text="Name")
+        treeview.heading("Size", text="Size")
+        treeview.heading("Type", text="Type")
+        treeview.heading("Modified", text="Modified")
 
-        # Bind double-click event
-        listbox.bind('<Double-Button-1>', on_double_click)
+        treeview.column("#0", width=250, anchor="w")
+        treeview.column("Size", width=100, anchor="e")
+        treeview.column("Type", width=100, anchor="center")
+        treeview.column("Modified", width=100, anchor="center")
 
+        treeview.pack(fill="both", expand=True, pady=5)
+
+        # Buttons
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(pady=5)
+
+        select_btn = ttk.Button(btn_frame, text="Select", command=on_select)
+        select_btn.grid(row=0, column=0, padx=5)
+
+        cancel_btn = ttk.Button(btn_frame, text="Cancel", command=on_cancel)
+        cancel_btn.grid(row=0, column=1, padx=5)
+
+        treeview.bind("<Double-1>", on_double_click)
+
+        # Initial population
         paths = []
-        refresh_listbox()
-
-        button_frame = tk.Frame(root)
-        button_frame.pack(pady=10)
-
-        tk.Button(button_frame, text="Select", command=on_select).pack(side=tk.LEFT, padx=10)
-        tk.Button(button_frame, text="Cancel", command=on_cancel).pack(side=tk.RIGHT, padx=10)
+        refresh_treeview()
 
         root.mainloop()
-        return selected_path
+        return select_paths
 
 

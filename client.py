@@ -73,7 +73,7 @@ def main():
                 conn.send(out_data)
             case Command.UPLOAD.name:
                 # sends upload directory to server, to be uploaded
-                test = DirHelp.select_file_server(conn, current_dir, True, False)
+                test = DirHelp.select_file_server(conn, current_dir, True)
                 client_paths: Path = DirHelp.select_file_client()
                 out_dict: dict = {KeyData.FILE_NAME: client_paths.name, KeyData.REL_PATH: current_dir}
                 out_data: bytes = Encoder.encode(out_dict, Command.UPLOAD)

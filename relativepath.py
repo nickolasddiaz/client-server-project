@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 from typing import Union
 
@@ -8,10 +9,11 @@ class RelativePath:
     This class preserves file metadata that would be lost when converting absolute paths to relative paths.
     """
 
-    def __init__(self, location: str, name: str = "", bytes_size: int = 0) -> None:
+    def __init__(self, location: str, name: str = "", bytes_size: int = 0, time: float = 0.0) -> None:
         self.location = location
         self.name = name
         self.bytes = bytes_size
+        self.time = time
 
     @classmethod
     def from_base(cls, folder: str = "", start_path: Path | None = None):
@@ -33,10 +35,12 @@ class RelativePath:
         if base_path is None:
             base_path = Path(__file__).parent.resolve()
 
+        time = 0
         # Determine if it's a file or directory and get size
         if start_path.is_file():
             name = start_path.name
             bytes_size = start_path.stat().st_size
+            time = start_path.stat().st_mtime
         else:
             name = ""
             bytes_size = 0
@@ -46,11 +50,26 @@ class RelativePath:
         else:
             rel_path = Path(__file__).parent.resolve()
 
-
         if folder:
             rel_path = rel_path / folder
 
-        return cls(str(rel_path), name, bytes_size)
+        return cls(str(rel_path), name, bytes_size, time)
+
+    @property
+    def true_name(self):
+        if self.isdir:
+            p = Path(self.location).parts
+            if len(p) >= 1:
+                return p[0]
+            else:
+                return ""
+
+        else:
+            return self.name
+
+    @property
+    def time_str(self) -> str:
+        return time.ctime(self.time)
 
     @property
     def isdir(self) -> bool:
@@ -122,11 +141,11 @@ class RelativePath:
             return Path(self.location)
 
     def __repr__(self) -> str:
-        return f"RelativePath(location='{self.location}', name='{self.name}', bytes={self.bytes})"
+        return f"RelativePath(location='{self.location}', name='{self.true_name}', bytes={self.bytes}, time={self.time_str})"
 
     def __str__(self) -> str:
         """Returns a string representation of the start_path."""
-        return self.str_dir if self.isdir else self.str_file
+        return f"{(self.str_dir if self.isdir else self.str_file)}: \t{self.time_str}"
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, RelativePath):
