@@ -1,13 +1,12 @@
 # server device runs this program
 
-from pathlib import Path
 import socket
 import threading
+from pathlib import Path
 
-from directory_func import DirHelp
 from encoder import Encoder
 from file_transfer import Transfer
-from type import Command, cmd_str, ResponseCode, KeyData, SIZE
+from type import Command, ResCode, KeyData, SIZE
 from relativepath import RelativePath
 
 # localhost if needed
@@ -20,7 +19,7 @@ SERVER_DIR = RelativePath.from_base("server_location")
 def handle_client (conn,addr):
     print(f"[NEW CONNECTION] {addr} connected.")
     info: dict = {KeyData.MSG: "Welcome to the server"}
-    out_data: bytes = Encoder.encode(info, ResponseCode.OK)
+    out_data: bytes = Encoder.encode(info, ResCode.OK)
     conn.send(out_data)
 
     # delete these variables so it does not cause collisions in the future
@@ -38,29 +37,25 @@ def handle_client (conn,addr):
         match cmd:
             case Command.LOGOUT:
                 info: dict = {KeyData.MSG.value: "Disconnecting from server"}
-                out_data: bytes = Encoder.encode(info, ResponseCode.DISCONNECT)
+                out_data: bytes = Encoder.encode(info, ResCode.DISCONNECT)
                 conn.send(out_data)
                 break # gets out of the while(true) loop
             case Command.DIR:
                 folder_path = in_data[KeyData.REL_PATH]
-                info: dict = {KeyData.REL_PATHS: DirHelp.list_directory(SERVER_DIR, folder_path, False)}
-                out_data: bytes = Encoder.encode(info, ResponseCode.OK)
+                info: dict = {KeyData.REL_PATHS: list_directory(SERVER_DIR, folder_path, False)}
+                out_data: bytes = Encoder.encode(info, ResCode.OK)
                 conn.send(out_data)
             case Command.TREE:
                 folder_path = in_data[KeyData.REL_PATH]
-                info: dict = {KeyData.REL_PATHS: DirHelp.list_directory(SERVER_DIR, folder_path, True)}
-                out_data: bytes = Encoder.encode(info, ResponseCode.OK)
-                conn.send(out_data)
-            case Command.HELP:
-                info: dict = {KeyData.MSG: cmd_str()}
-                out_data: bytes = Encoder.encode(info, ResponseCode.OK)
+                info: dict = {KeyData.REL_PATHS: list_directory(SERVER_DIR, folder_path, True)}
+                out_data: bytes = Encoder.encode(info, ResCode.OK)
                 conn.send(out_data)
             case Command.UPLOAD:
                 directory: RelativePath = in_data[KeyData.REL_PATH]
                 file_name: str = in_data[KeyData.FILE_NAME]
 
                 # FOR NOW: always sends OK, even if not OK
-                out_data: bytes = Encoder.encode({}, ResponseCode.OK)
+                out_data: bytes = Encoder.encode({}, ResCode.OK)
                 conn.send(out_data)
 
                 # receives the file
@@ -69,10 +64,10 @@ def handle_client (conn,addr):
                 # sends back if it worked or not
                 if worked:
                     info_2: dict = {KeyData.MSG: "File uploaded successfully"}
-                    out_data_2: bytes = Encoder.encode(info_2, ResponseCode.OK)
+                    out_data_2: bytes = Encoder.encode(info_2, ResCode.OK)
                 else:
                     info_2: dict = {KeyData.MSG: "File upload failed"}
-                    out_data_2: bytes = Encoder.encode(info_2, ResponseCode.ERROR)
+                    out_data_2: bytes = Encoder.encode(info_2, ResCode.ERROR)
 
                 conn.send(out_data_2)
 
@@ -80,11 +75,32 @@ def handle_client (conn,addr):
             # default case
             case _:
                 info: dict = {KeyData.MSG: "Invalid command received"}
-                out_data: bytes = Encoder.encode(info, ResponseCode.INVALID_CMD)
+                out_data: bytes = Encoder.encode(info, ResCode.INVALID_CMD)
                 conn.send(out_data)
 
     print(f"{addr} disconnected")
     conn.close()
+
+
+def list_directory(server_dir: RelativePath, base_dir: RelativePath, recursive: bool)-> list[RelativePath]:
+    """
+    Private function to take in a Path/directory and return the list of starting_path
+    Why list[tuple[Path, bool, int] because relative starting_path do not have a way to determine a directory
+    """
+    assert base_dir.isdir, f"Input needs to be a directory not a file: {base_dir}"
+
+    file_list = []
+    base_path: Path = server_dir.path() / base_dir.path()
+
+    # rglob represents all files recursively while glob is not recursive
+    iterator = base_path.rglob('*') if recursive else base_path.glob('*')
+
+    # potential features show files size and modification date
+    # doesn't show any directory info
+    for file_path_obj in iterator:
+        file_list.append(RelativePath.from_path(file_path_obj, server_dir.path()))
+
+    return file_list
 
 
 def main():

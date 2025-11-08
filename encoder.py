@@ -1,11 +1,11 @@
 import pickle
 
-from type import Command, ResponseCode, KeyData
+from type import Command, ResCode, KeyData
 
 
 class Encoder:
     @staticmethod
-    def encode(dict_items: dict, command: Command|ResponseCode) -> bytes:
+    def encode(dict_items: dict, command: Command | ResCode) -> bytes:
         dict_items[KeyData.CMD] = command
         return pickle.dumps(dict_items)
 

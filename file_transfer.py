@@ -5,21 +5,22 @@ from type import SIZE
 
 class Transfer:
     @staticmethod
-    def send_file(conn, file_path: Path) -> bool:
+    def send_file(conn, file_paths: list[Path]) -> bool:
         """
         Upload a file, by reading a file from a start_path
         """
-        assert file_path.is_file(), f"Invalid input: '{file_path}' is a file, not a directory."
-        assert file_path.exists(), f"Invalid input: '{file_path}' does not exist."
+        for file_path in file_paths:
+            assert file_path.is_file(), f"Invalid input: '{file_path}' is a file, not a directory."
+            assert file_path.exists(), f"Invalid input: '{file_path}' does not exist."
 
-        with open(file_path, "rb") as fileToSend:
-            while True:
-                filedata = fileToSend.read(SIZE)
-                if not filedata:
-                    break
-                conn.send(filedata)
+            with open(file_path, "rb") as fileToSend:
+                while True:
+                    filedata = fileToSend.read(SIZE)
+                    if not filedata:
+                        break
+                    conn.send(filedata)
 
-            conn.send(b'EOF')
+                conn.send(b'EOF')
 
         return True
 

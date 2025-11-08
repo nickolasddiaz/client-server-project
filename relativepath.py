@@ -5,8 +5,8 @@ from typing import Union
 
 class RelativePath:
     """
-    Stores a relative start_path with metadata about whether it's a directory and its size in bytes.
-    This class preserves file metadata that would be lost when converting absolute paths to relative paths.
+    Stores a relative start_path with metadata about whether it's a directory, byte size, modification date and name.
+    This class preserves file metadata that would be lost when converting absolute paths to relative paths in the Pathlib library.
     """
 
     def __init__(self, location: str, name: str = "", bytes_size: int = 0, time: float = 0.0) -> None:

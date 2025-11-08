@@ -32,25 +32,36 @@ class Command(Enum):
         obj.desc = desc
         return obj
 
-def cmd_str() -> str:
-    data = "Available Commands:\n"
-    for command in Command:
-        data += f"{command.name}: {command.desc}\n"
-    return data
+    @staticmethod
+    def cmd_str() -> str:
+        data = "Available Commands:\n"
+        for command in Command:
+            data += f"{command.name}: {command.desc}\n"
+        return data
+
+    @staticmethod
+    def from_str(name: str) -> "Command | None":
+        name = name.strip().upper()
+        try:
+            return Command[name]
+        except KeyError:
+            return None
 
 
-class ResponseCode(IntEnum):
+class ResCode(IntEnum):
     """
     Enum for all the available response codes
     """
     OK = auto(), "Request accepted"
     ERROR = auto(), "Request failed"
     DISCONNECT = auto(), "Disconnect from server"
-    INVALID_CMD = auto(), "Invalid command"
+    INVALID_CMD = auto(), f"Invalid command:\n {Command.cmd_str()}"
     INVALID_ARGS = auto(), "Invalid arguments"
     LOGIN_NEEDED = auto(), "Login required"
     PASS_NEEDED = auto(), "Password required"
     USER_NEEDED = auto(), "Username required"
+    UPLOAD_FAILED = auto(), "Upload failed"
+    SERVER_NOT_READY = auto(), "Server not ready"
 
     def __new__(cls, num: int, desc: str):
         obj = int.__new__(cls,num)
@@ -69,7 +80,7 @@ class KeyData(IntEnum):
         return self.value
 
 if __name__ == "__main__":
-    print(cmd_str())
+    print(Command.cmd_str())
     print(KeyData.MSG)
-    print(ResponseCode.INVALID_CMD)
+    print(ResCode.INVALID_CMD)
 
