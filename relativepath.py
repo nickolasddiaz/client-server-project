@@ -1,7 +1,7 @@
+import os
 import time
 from pathlib import Path
 from typing import Union
-
 
 
 class RelativePath:
@@ -35,7 +35,7 @@ class RelativePath:
     def from_base(cls, folder: str = "", base_path: Path | None = None):
         """
         Create a RelativePath from a base folder and optional subfolder.
-        
+
         Args:
             folder: subfolder to append (optional)
             base_path: The Path object
@@ -150,11 +150,32 @@ class RelativePath:
     def __truediv__(self, other: Union[str, 'RelativePath', Path]) -> 'RelativePath':
         """Enables the use of the / operator to join paths."""
         if isinstance(other, (str, Path)):
-            new_location = str(self.path() / other)
-            return RelativePath(new_location, "", 0)
+            # Combine the current location with the new path component
+            combined_path = Path(self.location) / other
+            # Normalize the path to resolve '..' and '.'
+            normalized = os.path.normpath(combined_path)
+
+            # Handle edge case: prevent going above root directory
+            # If normalization results in starting with '..', stay at root ('.')
+            if normalized.startswith('..'):
+                normalized = '.'
+
+            # Convert Windows paths to POSIX format for consistency
+            normalized = Path(normalized).as_posix()
+
+            return RelativePath(normalized, "", 0)
         elif isinstance(other, RelativePath):
-            new_location = str(self.path() / other.location)
-            return RelativePath(new_location, other.name, other.bytes)
+            # Combine locations first
+            combined_path = Path(self.location) / other.location
+            normalized = os.path.normpath(combined_path)
+
+            # Handle edge case: prevent going above root directory
+            if normalized.startswith('..'):
+                normalized = '.'
+
+            normalized = Path(normalized).as_posix()
+
+            return RelativePath(normalized, other.name, other.bytes)
         else:
             return NotImplemented
 

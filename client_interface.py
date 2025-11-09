@@ -21,7 +21,7 @@ class ClientInterface(ABC):
         self.local_pass: str = ""
 
     def run(self):
-        self.conn = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        self.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.conn.connect(self.ADDR)
         have_input: bool = True
         while True:  ### multiple communications
@@ -31,7 +31,7 @@ class ClientInterface(ABC):
                 response: dict = Encoder.decode(encoded_data)
 
                 response_cmd: ResCode = response[KeyData.CMD]
-                msg: str|None = response.get(KeyData.MSG)
+                msg: str | None = response.get(KeyData.MSG)
                 if msg:
                     self.app_print(msg)
 
@@ -52,14 +52,15 @@ class ClientInterface(ABC):
             match in_cmd:
                 case Command.RMDIR:
                     pass
-                    
+
                 case Command.LOGOUT:
                     out_data: bytes = Encoder.encode({}, Command.LOGOUT)
                     self.conn.send(out_data)
-                
+
                 case Command.DELETE:
                     out_data: bytes = Encoder.encode({}, Command.DELETE)
                     self.conn.send(out_data)
+
                 case Command.DIR:
                     out_data: bytes = Encoder.encode({KeyData.REL_PATH: self.current_dir}, Command.DIR)
                     self.conn.send(out_data)
@@ -71,14 +72,20 @@ class ClientInterface(ABC):
                 case Command.HELP:
                     self.app_print(Command.cmd_str())
                     have_input = False
+
                 case Command.UPLOAD:
                     have_input = False
-                    client_paths: list[Path] = self.select_client_files()
+                    client_paths: list[tuple[Path, str]] = self.select_client_files()
 
-                    for client_path in client_paths:
+                    for client_path, file_name in client_paths:
+                        byte_file = client_path.stat().st_size
+
                         # sends upload directory to server, to be uploaded
-                        out_dict: dict = {KeyData.REL_PATH: self.current_dir,
-                                          KeyData.FILE_NAME: client_path.name}
+                        out_dict: dict = {
+                            KeyData.REL_PATH: self.current_dir,
+                            KeyData.FILE_NAME: file_name,
+                            KeyData.BYTES: byte_file
+                        }
                         out_data: bytes = Encoder.encode(out_dict, Command.UPLOAD)
                         self.conn.send(out_data)
 
@@ -91,11 +98,11 @@ class ClientInterface(ABC):
                             continue
 
                         # sending the file
-                        succeeded: bool  = Transfer.send_file(self.conn, client_path)
+                        self.app_print(f"Uploading {file_name}...")
+                        succeeded: bool = Transfer.send_file(self.conn, client_path, byte_file)
                         if not succeeded:
-                            self.app_error_print(f"File {client_path.name} failed to be transferred")
+                            self.app_error_print(f"File {file_name} failed to be transferred")
                             continue
-
 
                         # handle the server response after upload
                         in_data_3 = self.conn.recv(SIZE)
@@ -106,50 +113,73 @@ class ClientInterface(ABC):
                         else:
                             self.app_error(response_cmd_3)
                             self.app_error_print(f"File {client_path.name} failed to be transferred")
-                
-                case Command.DOWNLOAD:
-                    # DOWNLOAD command starts here
-                    have_input = False
-                    client_paths: list[RelativePath] = self.select_server_files()
 
-                    for client_path in client_paths:
-                        # sends download directory to server, to be downloaded
-                        out_dict: dict = {KeyData.REL_PATH: self.current_dir}
+                case Command.DOWNLOAD:
+                    have_input = False
+                    server_files: list[RelativePath] = self.select_server_files()
+
+                    for server_file in server_files:
+                        # Request download from server
+                        out_dict: dict = {KeyData.REL_PATH: server_file}
                         out_data: bytes = Encoder.encode(out_dict, Command.DOWNLOAD)
                         self.conn.send(out_data)
 
-                        # receives an OK to receive the file
-                        in_data_2 = self.conn.recv(SIZE)
-                        response_2: dict = Encoder.decode(in_data_2)
-                        response_cmd_2: ResCode = response_2[KeyData.CMD]
-                        if response_cmd_2 != ResCode.OK:
-                            self.app_error(response_cmd_2)
+                        # Receive server response with file info
+                        in_data_1 = self.conn.recv(SIZE)
+                        response_1: dict = Encoder.decode(in_data_1)
+                        response_cmd_1: ResCode = response_1[KeyData.CMD]
+
+                        if response_cmd_1 != ResCode.OK:
+                            self.app_error(response_cmd_1)
+                            self.app_error_print(f"Cannot download {server_file.location}")
                             continue
 
-                        # sending the file
-                        succeeded: bool  = Transfer.send_file(self.conn, client_path)
-                        if not succeeded:
-                            self.app_error_print(f"File {client_path.name} failed to be transferred")
+                        # Get file info from response
+                        file_name: str = response_1[KeyData.FILE_NAME]
+                        byte_file: int = response_1[KeyData.BYTES]
+
+                        # Select local directory to save file
+                        local_dir: Path | None = self.select_client_dir()
+                        if local_dir is None:
+                            self.app_print("Download cancelled")
+                            # Send cancel message to server
+                            cancel_data: bytes = Encoder.encode({}, ResCode.CANCEL)
+                            self.conn.send(cancel_data)
                             continue
 
+                        # Check if file already exists locally
+                        local_file_path = local_dir / file_name
+                        if local_file_path.exists():
+                            new_name = self.rename_file(file_name)
+                            if new_name:
+                                file_name = new_name
+                            else:
+                                self.app_print("Download cancelled")
+                                cancel_data: bytes = Encoder.encode({}, ResCode.CANCEL)
+                                self.conn.send(cancel_data)
+                                continue
 
-                        # handle the server response after upload
-                        in_data_3 = self.conn.recv(SIZE)
-                        response_3: dict = Encoder.decode(in_data_3)
-                        response_cmd_3: ResCode = response_3[KeyData.CMD]
-                        if response_cmd_3 == ResCode.OK:
-                            self.app_print(f"File {client_path.name} uploaded successfully.")
+                        # Send OK to start receiving file
+                        ok_data: bytes = Encoder.encode({}, ResCode.OK)
+                        self.conn.send(ok_data)
+
+                        # Receive the file
+                        self.app_print(f"Downloading {file_name}...")
+                        succeeded: bool = Transfer.recv_file(self.conn, local_dir, file_name, byte_file)
+
+                        if succeeded:
+                            self.app_print(f"File {file_name} downloaded successfully to {local_dir}")
                         else:
-                            self.app_error(response_cmd_3)
-                            self.app_error_print(f"File {client_path.name} failed to be transferred")
+                            self.app_error_print(f"File {file_name} failed to download")
 
-                
                 case Command.CD:
                     have_input = False
                     # get the selected directory from user
-                    selected_path: RelativePath|None = self.select_server_dir()
+                    selected_path: RelativePath | None = self.select_server_dir()
                     if selected_path is None:
+                        self.app_print("Exited out of CD")
                         continue
+
                     out_data: bytes = Encoder.encode({KeyData.REL_PATH: selected_path}, Command.CD)
                     # send to data to the server
                     self.conn.send(out_data)
@@ -164,15 +194,33 @@ class ClientInterface(ABC):
                     else:
                         self.app_error(response_cmd)
 
-
                 # default case
                 case _:
                     self.app_error(ResCode.INVALID_CMD)
                     have_input = False
 
         self.app_error(ResCode.DISCONNECT)
-        self.conn.close() ## close the connection
+        self.conn.close()  ## close the connection
         self.app_exit()
+
+    def verify(self, is_dir: bool, exists: bool, rel_path: RelativePath) -> ResCode:
+        out_dict = {KeyData.IS_DIR: is_dir, KeyData.EXISTS: exists, KeyData.REL_PATH: rel_path}
+        out_data: bytes = Encoder.encode(out_dict, Command.VERIFY)
+        self.conn.send(out_data)
+
+        in_data = self.conn.recv(SIZE)
+        response: dict = Encoder.decode(in_data)
+        response_cmd: ResCode = response[KeyData.CMD]
+
+        return response_cmd
+
+    @abstractmethod
+    def rename_file_error(self, file_name: str) -> str:
+        pass
+
+    @abstractmethod
+    def rename_file(self, file_name: str) -> str:
+        pass
 
     @abstractmethod
     def app_exit(self) -> None:
@@ -183,7 +231,7 @@ class ClientInterface(ABC):
         pass
 
     @abstractmethod
-    def app_print(self, msg:str) -> None:
+    def app_print(self, msg: str) -> None:
         pass
 
     @abstractmethod
@@ -215,16 +263,13 @@ class ClientInterface(ABC):
         pass
 
     @abstractmethod
-    def select_client_files(self) -> list[Path]:
+    def select_client_files(self) -> list[tuple[Path, str]]:
         pass
 
     @abstractmethod
-    def select_client_dir(self) -> Path|None:
+    def select_client_dir(self) -> Path | None:
         pass
 
     @abstractmethod
     def progress_bar(self, progress: int) -> None:
         pass
-
-
-

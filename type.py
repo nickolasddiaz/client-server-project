@@ -30,6 +30,7 @@ class Command(Enum):
     UPLOAD = auto(), "Upload a file"
     CD = auto(), "Change directory"
     RMDIR = auto(), "Delete a folder/directory"
+    VERIFY = auto(), "Private command"
 
     def __new__(cls, num: int, desc: str):
         obj = object.__new__(cls)
@@ -66,15 +67,18 @@ class ResCode(IntEnum):
     UPLOAD_FAILED = auto(), "Upload failed"
     SERVER_NOT_READY = auto(), "Server not ready"
     FILE_NOT_FOUND = auto(), "File does not exist"
+
+
     DIRECTORY_NEEDED = auto(), "Directory is needed"
     FILE_NEEDED = auto(), "File is needed"
-    INVALID_DIR = auto(), "Directory does not exist"
-    FILE_EXISTS = auto(), "File already exists"
+
+    EXISTS = auto(), "Resource exists"
 
 
     PASS_REQUESTED = auto(), "Password requested"
     PASS_REQUIRED = auto(), "Password required"
     AUTH_FAILED = auto(), "Authentication failed"
+    CANCEL = auto(), "Cancel requested"
 
     def __new__(cls, num: int, desc: str):
         obj = int.__new__(cls,num)
@@ -92,6 +96,10 @@ class KeyData(IntEnum):
     REL_PATH = auto()
     REL_PATHS = auto()
     FILE_NAME = auto()
+    BYTES = auto()
+
+    EXISTS = auto()
+    IS_DIR = auto()
 
     def __int__(self):
         return self.value

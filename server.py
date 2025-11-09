@@ -1,3 +1,4 @@
+import os
 import socket
 import threading
 from pathlib import Path
@@ -10,11 +11,12 @@ from relativepath import RelativePath
 # localhost if needed
 IP = "0.0.0.0"
 PORT = 4453
-ADDR = (IP,PORT)
+ADDR = (IP, PORT)
 SERVER_DIR = RelativePath.from_base("server_location")
 
+
 ### to handle the clients
-def handle_client (conn,addr):
+def handle_client(conn, addr):
     print(f"[NEW CONNECTION] {addr} connected.")
     info: dict = {KeyData.MSG: "Welcome to the server: Type help to list all available commands"}
     out_data: bytes = Encoder.encode(info, ResCode.OK)
@@ -33,77 +35,118 @@ def handle_client (conn,addr):
 
         cmd: Command = in_data[KeyData.CMD]
         match cmd:
-            case Command.LOGOUT:
-                info: dict = {KeyData.MSG.value: "Disconnecting from server"}
-                out_data: bytes = Encoder.encode(info, ResCode.DISCONNECT)
+            case Command.VERIFY:
+                is_dir: bool = in_data[KeyData.IS_DIR]
+                exists: bool = in_data[KeyData.EXISTS]
+                rel_path: RelativePath = SERVER_DIR / in_data[KeyData.REL_PATH]
+
+                if rel_path.path().exists() ^ exists:
+                    out_data: bytes = Encoder.encode({}, ResCode.EXISTS)
+
+                elif rel_path.path().is_dir() ^ is_dir:
+                    res: ResCode = ResCode.DIRECTORY_NEEDED if is_dir else ResCode.FILE_NEEDED
+                    out_data: bytes = Encoder.encode({}, res)
+
+                else:
+                    out_data: bytes = Encoder.encode({}, ResCode.OK)
+
                 conn.send(out_data)
-                break # gets out of the while(true) loop
+
+            case Command.LOGOUT:
+                out_data: bytes = Encoder.encode({}, ResCode.DISCONNECT)
+                conn.send(out_data)
+                break  # gets out of the while(true) loop
+
             case Command.DIR:
                 folder_path = in_data[KeyData.REL_PATH]
                 info: dict = {KeyData.REL_PATHS: list_directory(SERVER_DIR, folder_path, False)}
                 out_data: bytes = Encoder.encode(info, ResCode.OK)
                 conn.send(out_data)
+
             case Command.TREE:
                 folder_path = in_data[KeyData.REL_PATH]
                 info: dict = {KeyData.REL_PATHS: list_directory(SERVER_DIR, folder_path, True)}
                 out_data: bytes = Encoder.encode(info, ResCode.OK)
                 conn.send(out_data)
+
             case Command.UPLOAD:
                 directory: RelativePath = in_data[KeyData.REL_PATH]
                 file_name: str = in_data[KeyData.FILE_NAME]
+                byte_files: int = in_data[KeyData.BYTES]
 
-                if not (SERVER_DIR / directory).path().exists():
-                    out_data: bytes = Encoder.encode({}, ResCode.FILE_EXISTS)
-                else:
-                    out_data: bytes = Encoder.encode({}, ResCode.OK)
+                # Validate directory exists
+                target_dir = SERVER_DIR / directory
+                if not target_dir.path().exists() or not target_dir.path().is_dir():
+                    out_data: bytes = Encoder.encode({},ResCode.DIRECTORY_NEEDED)
+                    conn.send(out_data)
+                    continue
 
+                # Send OK to start receiving file
+                out_data: bytes = Encoder.encode({}, ResCode.OK)
                 conn.send(out_data)
 
-                # receives the file
-                worked:bool = Transfer.recv_file(conn, SERVER_DIR, directory, file_name)
+                # Receive the file using safe path resolution
+                safe_dir = Transfer.file_traversal(SERVER_DIR.path(), directory.path())
+                worked: bool = Transfer.recv_file(conn, safe_dir, file_name, byte_files)
 
-                # sends back if it worked or not
+                # Send back if it worked or not
                 if worked:
-                    info_2: dict = {KeyData.MSG: "File uploaded successfully"}
+                    info_2: dict = {KeyData.MSG: f"File {file_name} uploaded successfully"}
                     out_data_2: bytes = Encoder.encode(info_2, ResCode.OK)
                 else:
-                    info_2: dict = {KeyData.MSG: "File upload failed"}
-                    out_data_2: bytes = Encoder.encode(info_2, ResCode.ERROR)
+                    out_data_2: bytes = Encoder.encode({}, ResCode.UPLOAD_FAILED)
 
                 conn.send(out_data_2)
-
 
             case Command.DOWNLOAD:
-                directory: RelativePath = in_data[KeyData.REL_PATH]
+                file_path: RelativePath = in_data[KeyData.REL_PATH]
+                full_path = SERVER_DIR / file_path
 
-                if (SERVER_DIR / directory).path().exists():
+                # Check if file exists and is a file (not directory)
+                if not full_path.path().exists():
                     out_data: bytes = Encoder.encode({}, ResCode.FILE_NOT_FOUND)
-                else:
-                    out_data: bytes = Encoder.encode({}, ResCode.OK)
-                    
+                    conn.send(out_data)
+                    continue
+
+                if not full_path.path().is_file():
+                    out_data: bytes = Encoder.encode({},ResCode.FILE_NEEDED)
+                    conn.send(out_data)
+                    continue
+
+                # Get file size and name
+                file_size = full_path.path().stat().st_size
+                file_name = full_path.path().name
+
+                # Send file info to client
+                info: dict = {
+                    KeyData.FILE_NAME: file_name,
+                    KeyData.BYTES: file_size
+                }
+                out_data: bytes = Encoder.encode(info, ResCode.OK)
                 conn.send(out_data)
 
-                base_path: Path = SERVER_DIR.path() / directory.path()
+                # Wait for client confirmation
+                in_data_2 = conn.recv(SIZE)
+                response_2: dict = Encoder.decode(in_data_2)
+                response_cmd_2: ResCode = response_2[KeyData.CMD]
 
-                # Fixes directory traversal vulnerability
-                if not base_path.is_relative_to(SERVER_DIR.path()):
-                    base_path = SERVER_DIR.path()
+                if response_cmd_2 == ResCode.CANCEL:
+                    print(f"Client cancelled download of {file_name}")
+                    continue
 
+                if response_cmd_2 != ResCode.OK:
+                    print(f"Unexpected response from client: {response_cmd_2}")
+                    continue
 
-                # send the file
-                worked:bool = Transfer.send_file(conn, base_path / file_name)
+                # Send the file
+                safe_path = Transfer.file_traversal(SERVER_DIR.path(), file_path.path())
+                succeeded: bool = Transfer.send_file(conn, safe_path, file_size)
 
-                # sends back if it worked or not
-                if worked:
-                    info_2: dict = {KeyData.MSG: "File downloaded successfully"}
-                    out_data_2: bytes = Encoder.encode(info_2, ResCode.OK)
+                if succeeded:
+                    print(f"File {file_name} sent successfully to {addr}")
                 else:
-                    info_2: dict = {KeyData.MSG: "File download failed"}
-                    out_data_2: bytes = Encoder.encode(info_2, ResCode.ERROR)
+                    print(f"Failed to send file {file_name} to {addr}")
 
-                conn.send(out_data_2)
-
-            
             case Command.CD:
                 selected_path: RelativePath = in_data[KeyData.REL_PATH]
 
@@ -111,22 +154,20 @@ def handle_client (conn,addr):
                     info: dict = {KeyData.REL_PATH: selected_path}
                     out_data: bytes = Encoder.encode(info, ResCode.OK)
                 else:
-                    out_data: bytes = Encoder.encode({}, ResCode.INVALID_DIR)
+                    out_data: bytes = Encoder.encode({}, ResCode.EXISTS)
 
                 conn.send(out_data)
-                
 
             # default case
             case _:
-                info: dict = {KeyData.MSG: "Invalid command received"}
-                out_data: bytes = Encoder.encode(info, ResCode.INVALID_CMD)
+                out_data: bytes = Encoder.encode({}, ResCode.INVALID_CMD)
                 conn.send(out_data)
 
     print(f"{addr} disconnected")
     conn.close()
 
 
-def list_directory(server_dir: RelativePath, base_dir: RelativePath, recursive: bool)-> list[RelativePath]:
+def list_directory(server_dir: RelativePath, base_dir: RelativePath, recursive: bool) -> list[RelativePath]:
     """
     Private function to take in a Path/directory and return the list of starting_path
     Used for sending the TREE and DIR commands
@@ -134,37 +175,30 @@ def list_directory(server_dir: RelativePath, base_dir: RelativePath, recursive: 
     assert base_dir.isdir, f"Input needs to be a directory not a file: {base_dir}"
 
     file_list = []
-    base_path: Path = server_dir.path() / base_dir.path()
 
-    # Fixes directory traversal vulnerability
-    if not base_path.is_relative_to(server_dir.path()):
-        base_path = server_dir.path()
+    base_path: Path = Transfer.file_traversal(server_dir.path(), base_dir.path())
 
     # rglob represents all files recursively while glob is not recursive
     iterator = base_path.rglob('*') if recursive else base_path.glob('*')
 
-    # potential features show files size and modification date
-    # doesn't show any directory info
     for file_path_obj in iterator:
-        file_list.append(RelativePath.from_path(file_path_obj, server_dir.path()))
+        file_list.append(RelativePath.from_path(file_path_obj, base_path))
 
     return file_list
 
 
 def main():
     print("Starting the server")
-    server = socket.socket(socket.AF_INET,socket.SOCK_STREAM) ## used IPV4 and TCP connection
-    server.bind(ADDR) # bind the address
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  ## used IPV4 and TCP connection
+    server.bind(ADDR)  # bind the address
     print(ADDR)
-    server.listen() ## start listening
+    server.listen()  ## start listening
     print(f"server is listening on {IP}: {PORT}")
     while True:
-        conn, addr = server.accept() ### accept a connection from a client
-        thread = threading.Thread(target = handle_client, args = (conn, addr)) ## assigning a thread for each client
+        conn, addr = server.accept()  ### accept a connection from a client
+        thread = threading.Thread(target=handle_client, args=(conn, addr))  ## assigning a thread for each client
         thread.start()
 
 
 if __name__ == "__main__":
     main()
-
-

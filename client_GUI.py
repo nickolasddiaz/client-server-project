@@ -15,6 +15,9 @@ class ClientGui(ClientInterface):
         super().__init__()
         self.received_first_msg = False
 
+    def rename_file(self, file_name: str) -> str:
+        pass
+
     def app_exit(self) -> None:
         print("APP exit successfully")
         sys.exit(os.EX_OK)
