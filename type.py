@@ -55,19 +55,26 @@ class ResCode(IntEnum):
     OK = auto(), "Request accepted"
     ERROR = auto(), "Request failed"
     DISCONNECT = auto(), "Disconnect from server"
-    INVALID_CMD = auto(), f"Invalid command:\n {Command.cmd_str()}"
+    INVALID_CMD = auto(), f"Invalid command:\n{Command.cmd_str()}"
     INVALID_ARGS = auto(), "Invalid arguments"
     LOGIN_NEEDED = auto(), "Login required"
-    PASS_NEEDED = auto(), "Password required"
-    USER_NEEDED = auto(), "Username required"
+    PASS_REQUESTED = auto(), "Password requested"
+    PASS_REQUIRED = auto(), "Password required"
+    AUTH_FAILED = auto(), "Authentication failed"
     UPLOAD_FAILED = auto(), "Upload failed"
     SERVER_NOT_READY = auto(), "Server not ready"
+    FILE_NOT_FOUND = auto(), "File does not exist"
+    DIRECTORY_NEEDED = auto(), "Directory is needed"
+    FILE_NEEDED = auto(), "File is needed"
 
     def __new__(cls, num: int, desc: str):
         obj = int.__new__(cls,num)
         obj._value_ = num
         obj.desc = desc
         return obj
+
+    def is_auth_related (self) -> bool:
+        return ResCode.PASS_REQUESTED.value <= self.value <= ResCode.AUTH_FAILED.value
 
 class KeyData(IntEnum):
     MSG = auto()

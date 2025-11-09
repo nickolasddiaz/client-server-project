@@ -11,18 +11,25 @@ from tkinter import filedialog, ttk
 
 
 class ClientGui(ClientInterface):
-
-    def start_program(self) -> None:
-        self.main_gui()
+    def __init__(self):
+        super().__init__()
+        self.received_first_msg = False
 
     def app_exit(self) -> None:
-        self.app_print("APP exit successfully")
+        print("APP exit successfully")
         sys.exit(os.EX_OK)
 
     def app_error(self, status: ResCode) -> None:
         pass
 
     def app_print(self, msg: str) -> None:
+        if self.received_first_msg:
+            print(msg)
+        else:
+            self.received_first_msg = True
+            self.main_gui()
+
+    def app_error_print(self, msg: str) -> None:
         pass
 
     def app_print_statistics(self, msg: str) -> None:
@@ -34,7 +41,7 @@ class ClientGui(ClientInterface):
     def show_dir(self, rel_paths: list[RelativePath]) -> None:
         pass
 
-    def receive_user_pass(self) -> tuple[str, str]:
+    def receive_user_pass(self) -> None:
         pass
 
     def select_server_files(self) -> list[RelativePath]:
@@ -51,11 +58,9 @@ class ClientGui(ClientInterface):
         )
         paths: list[Path] = []
         if file_paths:
-            return paths
+            for file_path in file_paths:
+                paths.append(Path(file_path))
 
-        for file_path in file_paths:
-            paths.append(Path(file_path))
-        root.destroy()
         return paths
 
 
@@ -69,11 +74,11 @@ class ClientGui(ClientInterface):
         )
         root.destroy()
         if directory_path:
-            return None
-        else:
             return Path(directory_path)
+        else:
+            return None
 
-    def progress_bar(self, progress: int, msg: str) -> None:
+    def progress_bar(self, progress: int) -> None:
         pass
 
     def main_gui(self):
@@ -134,15 +139,21 @@ class ClientGui(ClientInterface):
 
             root.destroy()
 
-        def on_cancel():
-            root.destroy()
-
         root = tk.Tk()
         root.title("Select file/s")
         root.geometry("700x400")
 
-        main_frame = ttk.Labelframe(root, padding=10, text="Available files on server:")
-        main_frame.pack(fill="both", expand=True)
+        # Bind the on_closing function to the WM_DELETE_WINDOW protocol
+        root.protocol("WM_DELETE_WINDOW", self.app_exit)
+
+        notebook = ttk.Notebook(root)
+        notebook.pack(expand=True, fill="both")
+
+        main_frame = ttk.Frame(notebook)
+        stat_frame = ttk.Frame(notebook)
+
+        message_label = ttk.Label(main_frame, text="Write Messages here")
+        message_label.pack(anchor="w", pady=5)
 
         path_label = ttk.Label(main_frame, text="")
         path_label.pack(anchor="w", pady=5)
@@ -156,9 +167,9 @@ class ClientGui(ClientInterface):
         treeview.heading("Modified", text="Modified")
 
         treeview.column("#0", width=250, anchor="w")
-        treeview.column("Size", width=100, anchor="e")
+        treeview.column("Size", width=50, anchor="e")
         treeview.column("Type", width=100, anchor="center")
-        treeview.column("Modified", width=100, anchor="center")
+        treeview.column("Modified", width=150, anchor="center")
 
         treeview.pack(fill="both", expand=True, pady=5)
 
@@ -166,17 +177,14 @@ class ClientGui(ClientInterface):
         btn_frame = ttk.Frame(main_frame)
         btn_frame.pack(pady=5)
 
-        select_btn = ttk.Button(btn_frame, text="Select", command=on_select)
-        select_btn.grid(row=0, column=0, padx=5)
-
-        cancel_btn = ttk.Button(btn_frame, text="Cancel", command=on_cancel)
-        cancel_btn.grid(row=0, column=1, padx=5)
-
         treeview.bind("<Double-1>", on_double_click)
 
         # Initial population
         paths = []
         refresh_treeview()
+
+        notebook.add(main_frame, text="Available files on server:")
+        notebook.add(stat_frame, text="Statistics")
 
         root.mainloop()
 

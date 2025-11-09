@@ -1,5 +1,3 @@
-# server device runs this program
-
 import socket
 import threading
 from pathlib import Path
@@ -18,7 +16,7 @@ SERVER_DIR = RelativePath.from_base("server_location")
 ### to handle the clients
 def handle_client (conn,addr):
     print(f"[NEW CONNECTION] {addr} connected.")
-    info: dict = {KeyData.MSG: "Welcome to the server"}
+    info: dict = {KeyData.MSG: "Welcome to the server: Type help to list all available commands"}
     out_data: bytes = Encoder.encode(info, ResCode.OK)
     conn.send(out_data)
 
@@ -85,7 +83,7 @@ def handle_client (conn,addr):
 def list_directory(server_dir: RelativePath, base_dir: RelativePath, recursive: bool)-> list[RelativePath]:
     """
     Private function to take in a Path/directory and return the list of starting_path
-    Why list[tuple[Path, bool, int] because relative starting_path do not have a way to determine a directory
+    Used for sending the TREE and DIR commands
     """
     assert base_dir.isdir, f"Input needs to be a directory not a file: {base_dir}"
 
