@@ -44,6 +44,9 @@ class ClientGui(ClientInterface):
     def receive_user_pass(self) -> None:
         pass
 
+    def select_server_dir(self) -> RelativePath:
+        pass
+
     def select_server_files(self) -> list[RelativePath]:
         pass
 

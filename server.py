@@ -52,8 +52,11 @@ def handle_client (conn,addr):
                 directory: RelativePath = in_data[KeyData.REL_PATH]
                 file_name: str = in_data[KeyData.FILE_NAME]
 
-                # FOR NOW: always sends OK, even if not OK
-                out_data: bytes = Encoder.encode({}, ResCode.OK)
+                if not (SERVER_DIR / directory).path().exists():
+                    out_data: bytes = Encoder.encode({}, ResCode.FILE_EXISTS)
+                else:
+                    out_data: bytes = Encoder.encode({}, ResCode.OK)
+
                 conn.send(out_data)
 
                 # receives the file
@@ -69,7 +72,50 @@ def handle_client (conn,addr):
 
                 conn.send(out_data_2)
 
+
+            case Command.DOWNLOAD:
+                directory: RelativePath = in_data[KeyData.REL_PATH]
+
+                if (SERVER_DIR / directory).path().exists():
+                    out_data: bytes = Encoder.encode({}, ResCode.FILE_NOT_FOUND)
+                else:
+                    out_data: bytes = Encoder.encode({}, ResCode.OK)
+                    
+                conn.send(out_data)
+
+                base_path: Path = SERVER_DIR.path() / directory.path()
+
+                # Fixes directory traversal vulnerability
+                if not base_path.is_relative_to(SERVER_DIR.path()):
+                    base_path = SERVER_DIR.path()
+
+
+                # send the file
+                worked:bool = Transfer.send_file(conn, base_path / file_name)
+
+                # sends back if it worked or not
+                if worked:
+                    info_2: dict = {KeyData.MSG: "File downloaded successfully"}
+                    out_data_2: bytes = Encoder.encode(info_2, ResCode.OK)
+                else:
+                    info_2: dict = {KeyData.MSG: "File download failed"}
+                    out_data_2: bytes = Encoder.encode(info_2, ResCode.ERROR)
+
+                conn.send(out_data_2)
+
             
+            case Command.CD:
+                selected_path: RelativePath = in_data[KeyData.REL_PATH]
+
+                if selected_path.isdir and (SERVER_DIR / selected_path).path().exists():
+                    info: dict = {KeyData.REL_PATH: selected_path}
+                    out_data: bytes = Encoder.encode(info, ResCode.OK)
+                else:
+                    out_data: bytes = Encoder.encode({}, ResCode.INVALID_DIR)
+
+                conn.send(out_data)
+                
+
             # default case
             case _:
                 info: dict = {KeyData.MSG: "Invalid command received"}
@@ -89,6 +135,10 @@ def list_directory(server_dir: RelativePath, base_dir: RelativePath, recursive: 
 
     file_list = []
     base_path: Path = server_dir.path() / base_dir.path()
+
+    # Fixes directory traversal vulnerability
+    if not base_path.is_relative_to(server_dir.path()):
+        base_path = server_dir.path()
 
     # rglob represents all files recursively while glob is not recursive
     iterator = base_path.rglob('*') if recursive else base_path.glob('*')

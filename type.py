@@ -1,5 +1,9 @@
-# this file lists all commands to be used in client.py and server.py
-
+"""
+Lists all the available commands, response codes and keys used in data dictionaries
+(in client_CLI.py, client_interface.py, and server.py). Commands indicate what logic
+to perform.
+"""
+    
 from enum import Enum, IntEnum
 
 SIZE = 1024
@@ -17,7 +21,6 @@ class Command(Enum):
     """
     Enum for all the available commands
     """
-    ECHO = auto(), "Echo a message to yourself"
     DELETE = auto(), "Delete a file"
     DIR = auto(), "Show the directory"
     TREE = auto(), "Show every file recursively"
@@ -25,6 +28,8 @@ class Command(Enum):
     HELP = auto(), "Show all available commands"
     LOGOUT = auto(), "Log out"
     UPLOAD = auto(), "Upload a file"
+    CD = auto(), "Change directory"
+    RMDIR = auto(), "Delete a folder/directory"
 
     def __new__(cls, num: int, desc: str):
         obj = object.__new__(cls)
@@ -58,14 +63,18 @@ class ResCode(IntEnum):
     INVALID_CMD = auto(), f"Invalid command:\n{Command.cmd_str()}"
     INVALID_ARGS = auto(), "Invalid arguments"
     LOGIN_NEEDED = auto(), "Login required"
-    PASS_REQUESTED = auto(), "Password requested"
-    PASS_REQUIRED = auto(), "Password required"
-    AUTH_FAILED = auto(), "Authentication failed"
     UPLOAD_FAILED = auto(), "Upload failed"
     SERVER_NOT_READY = auto(), "Server not ready"
     FILE_NOT_FOUND = auto(), "File does not exist"
     DIRECTORY_NEEDED = auto(), "Directory is needed"
     FILE_NEEDED = auto(), "File is needed"
+    INVALID_DIR = auto(), "Directory does not exist"
+    FILE_EXISTS = auto(), "File already exists"
+
+
+    PASS_REQUESTED = auto(), "Password requested"
+    PASS_REQUIRED = auto(), "Password required"
+    AUTH_FAILED = auto(), "Authentication failed"
 
     def __new__(cls, num: int, desc: str):
         obj = int.__new__(cls,num)
@@ -77,6 +86,7 @@ class ResCode(IntEnum):
         return ResCode.PASS_REQUESTED.value <= self.value <= ResCode.AUTH_FAILED.value
 
 class KeyData(IntEnum):
+    """Enum for all the available keys in the data dictionaries"""
     MSG = auto()
     CMD = auto()
     REL_PATH = auto()

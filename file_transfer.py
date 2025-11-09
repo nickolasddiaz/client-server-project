@@ -7,7 +7,7 @@ class Transfer:
     @staticmethod
     def send_file(conn, file_path: Path) -> bool:
         """
-        Upload a file, by reading a file from a start_path
+        Upload a file, by reading a file from a base_path
         """
         assert file_path.is_file(), f"Invalid input: '{file_path}' is a file, not a directory."
         assert file_path.exists(), f"Invalid input: '{file_path}' does not exist."
@@ -26,12 +26,18 @@ class Transfer:
     @staticmethod
     def recv_file(conn, server_path: RelativePath ,rel_path: RelativePath, file_name: str) -> bool:
         """
-        Downloads a file, by reading a file from a start_path
+        Downloads a file, by reading a file from a base_path
         """
 
         assert rel_path.isdir, f"Invalid input: '{rel_path}' is a file, not a directory."
 
-        with open(server_path.path() / rel_path.path() / file_name, "wb") as fileToWrite:
+        base_path: Path = server_path.path() / rel_path.path()
+
+        # Fixes directory traversal vulnerability
+        if not base_path.is_relative_to(server_path.path()):
+            base_path = server_path.path()
+
+        with open(base_path / file_name, "wb") as fileToWrite:
             while True:
                 filedata = conn.recv(SIZE)
                 if not filedata:

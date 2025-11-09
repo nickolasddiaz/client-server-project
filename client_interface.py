@@ -50,12 +50,13 @@ class ClientInterface(ABC):
             in_cmd: Command = self.command_input()
 
             match in_cmd:
+                case Command.RMDIR:
+                    pass
+                    
                 case Command.LOGOUT:
                     out_data: bytes = Encoder.encode({}, Command.LOGOUT)
                     self.conn.send(out_data)
-                case Command.DOWNLOAD:
-                    out_data: bytes = Encoder.encode({}, Command.DOWNLOAD)
-                    self.conn.send(out_data)
+                
                 case Command.DELETE:
                     out_data: bytes = Encoder.encode({}, Command.DELETE)
                     self.conn.send(out_data)
@@ -105,6 +106,64 @@ class ClientInterface(ABC):
                         else:
                             self.app_error(response_cmd_3)
                             self.app_error_print(f"File {client_path.name} failed to be transferred")
+                
+                case Command.DOWNLOAD:
+                    # DOWNLOAD command starts here
+                    have_input = False
+                    client_paths: list[RelativePath] = self.select_server_files()
+
+                    for client_path in client_paths:
+                        # sends download directory to server, to be downloaded
+                        out_dict: dict = {KeyData.REL_PATH: self.current_dir}
+                        out_data: bytes = Encoder.encode(out_dict, Command.DOWNLOAD)
+                        self.conn.send(out_data)
+
+                        # receives an OK to receive the file
+                        in_data_2 = self.conn.recv(SIZE)
+                        response_2: dict = Encoder.decode(in_data_2)
+                        response_cmd_2: ResCode = response_2[KeyData.CMD]
+                        if response_cmd_2 != ResCode.OK:
+                            self.app_error(response_cmd_2)
+                            continue
+
+                        # sending the file
+                        succeeded: bool  = Transfer.send_file(self.conn, client_path)
+                        if not succeeded:
+                            self.app_error_print(f"File {client_path.name} failed to be transferred")
+                            continue
+
+
+                        # handle the server response after upload
+                        in_data_3 = self.conn.recv(SIZE)
+                        response_3: dict = Encoder.decode(in_data_3)
+                        response_cmd_3: ResCode = response_3[KeyData.CMD]
+                        if response_cmd_3 == ResCode.OK:
+                            self.app_print(f"File {client_path.name} uploaded successfully.")
+                        else:
+                            self.app_error(response_cmd_3)
+                            self.app_error_print(f"File {client_path.name} failed to be transferred")
+
+                
+                case Command.CD:
+                    have_input = False
+                    # get the selected directory from user
+                    selected_path: RelativePath|None = self.select_server_dir()
+                    if selected_path is None:
+                        continue
+                    out_data: bytes = Encoder.encode({KeyData.REL_PATH: selected_path}, Command.CD)
+                    # send to data to the server
+                    self.conn.send(out_data)
+
+                    # receive server response if it is a valid directory
+                    in_data = self.conn.recv(SIZE)
+                    response: dict = Encoder.decode(in_data)
+                    response_cmd: ResCode = response[KeyData.CMD]
+                    if response_cmd == ResCode.OK:
+                        self.current_dir = selected_path
+                        self.app_print(f"Changed directory to {self.current_dir.location}")
+                    else:
+                        self.app_error(response_cmd)
+
 
                 # default case
                 case _:
@@ -145,6 +204,10 @@ class ClientInterface(ABC):
 
     @abstractmethod
     def receive_user_pass(self) -> None:
+        pass
+
+    @abstractmethod
+    def select_server_dir(self) -> RelativePath:
         pass
 
     @abstractmethod

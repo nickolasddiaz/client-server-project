@@ -70,7 +70,7 @@ class ClientCli(ClientInterface):
         Takes string input and casts it to the Command enum
         """
         while True:
-            in_data = input(f"{self.current_dir.location}\\> ").strip().upper()
+            in_data = input(f"{self.current_dir.location}\\> ")
             cmd: Command | None = Command.from_str(in_data)
 
             if cmd is None:
@@ -92,6 +92,20 @@ class ClientCli(ClientInterface):
         self.local_user = input("Enter username: ")
         self.local_pass = getpass.getpass("Enter password: ")
 
+    def select_server_dir(self) -> RelativePath|None:
+        """
+        Takes string input from user casts it to RelativePath object and checks if it exists
+        returns if not a directory return None
+        """
+        print("Select a directory of the server")
+        while True:
+            in_files = in_files = input(f"\t{self.current_dir.location}\\ <-|").strip('"')
+            if in_files == '':
+                return None
+
+            path_file = RelativePath(str(self.current_dir.location), "", 0, 0) / in_files
+            return path_file
+
     def select_server_files(self) -> list[RelativePath]:
         """
         Takes input as a string converts it to RelativePath
@@ -100,7 +114,7 @@ class ClientCli(ClientInterface):
         print("Select multiple files on the server: Return nothing to exit")
         paths: list[RelativePath] = []
         while True:
-            in_files = input(f"\t{self.current_dir.location}\\ <-|")
+            in_files = input(f"\t{self.current_dir.location}\\ <-|").strip('"')
             if in_files == '':
                 return paths
             paths.append(self.current_dir / in_files)
@@ -108,13 +122,13 @@ class ClientCli(ClientInterface):
     def select_client_files(self) -> list[Path]:
         """
         Takes string input from user in a while loop casts it to Path object and checks if it exists
-        returns when input is empty
+        program returns to list when input is empty
         """
         print("Select multiple files on your machine (relative or absolute paths): Return nothing to exit")
         current_directory: str = os.getcwd()
         paths: list[Path] = []
         while True:
-            in_files = input(f"\t{current_directory} <-| ")
+            in_files = input(f"\t{current_directory} <-| ").strip('"')
             if in_files == '':
                 return paths
 
@@ -133,7 +147,7 @@ class ClientCli(ClientInterface):
         print("Select a directory on your machine (relative or absolute path): Return nothing for current directory")
         current_directory: str = os.getcwd()
         while True:
-            in_files = input(f"\t{current_directory} <-| ")
+            in_files = input(f"\t{current_directory} <-| ").strip('"')
             if in_files == '':
                 return Path(current_directory)
 

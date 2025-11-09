@@ -3,44 +3,68 @@ from pathlib import Path
 from typing import Union
 
 
+
 class RelativePath:
     """
-    Stores a relative start_path with metadata about whether it's a directory, byte size, modification date and name.
-    This class preserves file metadata that would be lost when converting absolute paths to relative paths in the Pathlib library.
+    Stores a relative base_path with metadata about whether it's a directory,
+    byte size, modification date and name.
+    This class preserves file metadata that would be lost when converting 
+    absolute paths to relative paths in the Pathlib library.
+    Attributes:
+        location (str): The relative location of the base_path.
+        name (str): The name of the file or directory.
+        bytes_size (int): The size of the file in bytes.
+        mtime (float): The modification time of the file or directory.
+        isdir (bool): True if this represents a directory.
+        isfile (bool): True if this represents a file.
+
+        Create this class using from_path or from_base class methods.
+        from_path: Creates a RelativePath from a Path object.
+        from_base: Creates a RelativePath from a base folder and optional subfolder.
+
+
     """
 
-    def __init__(self, location: str, name: str = "", bytes_size: int = 0, time: float = 0.0) -> None:
+    def __init__(self, location: str, name: str = "", bytes_size: int = 0, mtime: float = 0.0) -> None:
         self.location = location
         self.name = name
         self.bytes = bytes_size
-        self.time = time
+        self.time = mtime
 
     @classmethod
-    def from_base(cls, folder: str = "", start_path: Path | None = None):
-        if start_path is None:
-            start_path = Path(__file__).parent.resolve()
+    def from_base(cls, folder: str = "", base_path: Path | None = None):
+        """
+        Create a RelativePath from a base folder and optional subfolder.
+        
+        Args:
+            folder: subfolder to append (optional)
+            base_path: The Path object
+        """
 
-        return cls.from_path(start_path, start_path, folder)
+        return cls.from_path(base_path, base_path, folder)
 
     @classmethod
-    def from_path(cls, start_path: Path, base_path: Path | None = None, folder: str = "") -> 'RelativePath':
+    def from_path(cls, start_path: Path | None, base_path: Path | None = None, folder: str = "") -> 'RelativePath':
         """
         Create a RelativePath from a Path object.
 
         Args:
-            base_path: The starting server location
             start_path: The Path object to convert
-            folder: Optional subfolder to append
+            base_path: The starting server location (optional)
+            folder: Subfolder to append (Optional)
         """
         if base_path is None:
-            base_path = Path(__file__).parent.resolve()
+            base_path = Path.cwd()
 
-        time = 0
+        if start_path is None:
+            start_path = Path.cwd()
+
+        temp_time = 0
         # Determine if it's a file or directory and get size
         if start_path.is_file():
             name = start_path.name
             bytes_size = start_path.stat().st_size
-            time = start_path.stat().st_mtime
+            temp_time = start_path.stat().st_mtime
         else:
             name = ""
             bytes_size = 0
@@ -48,15 +72,16 @@ class RelativePath:
         if start_path.is_relative_to(base_path):
             rel_path = start_path.relative_to(base_path)
         else:
-            rel_path = Path(__file__).parent.resolve()
+            rel_path = Path.cwd()
 
         if folder:
             rel_path = rel_path / folder
 
-        return cls(str(rel_path), name, bytes_size, time)
+        return cls(str(rel_path.as_posix()), name, bytes_size, temp_time)
 
     @property
     def true_name(self):
+        """Returns the true name of the file or directory."""
         if self.isdir:
             p = Path(self.location).parts
             if len(p) >= 1:
@@ -69,6 +94,7 @@ class RelativePath:
 
     @property
     def time_str(self) -> str:
+        """Returns a human-readable string of the modification time."""
         return time.ctime(self.time)
 
     @property
@@ -122,32 +148,33 @@ class RelativePath:
             return RelativePath(str(parent), '', 0)
 
     def __truediv__(self, other: Union[str, 'RelativePath', Path]) -> 'RelativePath':
+        """Enables the use of the / operator to join paths."""
         if isinstance(other, (str, Path)):
-            base = Path(self.location) / self.name if self.name else Path(self.location)
-            new_location = str(base / other)
+            new_location = str(self.path() / other)
             return RelativePath(new_location, "", 0)
         elif isinstance(other, RelativePath):
-            base = Path(self.location) / self.name if self.name else Path(self.location)
-            new_location = str(base / other.location)
+            new_location = str(self.path() / other.location)
             return RelativePath(new_location, other.name, other.bytes)
         else:
             return NotImplemented
 
     def path(self) -> Path:
-        """Returns a pathlib Path object representing the full start_path."""
+        """Returns a pathlib Path object representing the full base_path."""
         if self.name:
-            return Path(self.location) / self.name
+            return Path(Path(self.location).as_posix()) / self.name
         else:
-            return Path(self.location)
+            return Path(Path(self.location).as_posix())
 
     def __repr__(self) -> str:
+        """Returns a detailed string representation of the RelativePath."""
         return f"RelativePath(location='{self.location}', name='{self.true_name}', bytes={self.bytes}, time={self.time_str})"
 
     def __str__(self) -> str:
-        """Returns a string representation of the start_path."""
+        """Returns a string representation of the base_path."""
         return f"{(self.str_dir if self.isdir else self.str_file)}: \t{self.time_str}"
 
     def __eq__(self, other) -> bool:
+        """Checks equality based on location, name, and bytes size."""
         if not isinstance(other, RelativePath):
             return False
         return (self.location == other.location and
@@ -155,4 +182,5 @@ class RelativePath:
                 self.bytes == other.bytes)
 
     def __hash__(self) -> int:
+        """Allows RelativePath to be used in sets and as dictionary keys."""
         return hash((self.location, self.name, self.bytes))
