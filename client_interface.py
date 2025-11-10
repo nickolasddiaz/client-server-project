@@ -23,10 +23,10 @@ class ClientInterface(ABC):
     def run(self):
         self.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.conn.connect(self.ADDR)
-        have_input: bool = True
+        skip_server_input: bool = True
         while True:  ### multiple communications
 
-            if have_input:
+            if skip_server_input:
                 encoded_data: bytes = self.conn.recv(SIZE)
                 response: dict = Encoder.decode(encoded_data)
 
@@ -45,20 +45,17 @@ class ClientInterface(ABC):
                 if in_paths:
                     self.show_dir(in_paths)
 
-            have_input = True
+            skip_server_input = True
 
             in_cmd: Command = self.command_input()
 
             match in_cmd:
-                case Command.RMDIR:
-                    pass
+                case Command.CLS:
+                    self.clear_screen()
+                    skip_server_input = False
 
                 case Command.LOGOUT:
                     out_data: bytes = Encoder.encode({}, Command.LOGOUT)
-                    self.conn.send(out_data)
-
-                case Command.DELETE:
-                    out_data: bytes = Encoder.encode({}, Command.DELETE)
                     self.conn.send(out_data)
 
                 case Command.DIR:
@@ -71,10 +68,10 @@ class ClientInterface(ABC):
 
                 case Command.HELP:
                     self.app_print(Command.cmd_str())
-                    have_input = False
+                    skip_server_input = False
 
                 case Command.UPLOAD:
-                    have_input = False
+                    skip_server_input = False
                     client_paths: list[tuple[Path, str]] = self.select_client_files()
 
                     for client_path, file_name in client_paths:
@@ -115,7 +112,7 @@ class ClientInterface(ABC):
                             self.app_error_print(f"File {client_path.name} failed to be transferred")
 
                 case Command.DOWNLOAD:
-                    have_input = False
+                    skip_server_input = False
                     server_files: list[RelativePath] = self.select_server_files()
 
                     for server_file in server_files:
@@ -173,9 +170,9 @@ class ClientInterface(ABC):
                             self.app_error_print(f"File {file_name} failed to download")
 
                 case Command.CD:
-                    have_input = False
+                    skip_server_input = False
                     # get the selected directory from user
-                    selected_path: RelativePath | None = self.select_server_dir()
+                    selected_path: RelativePath | None = self.select_server_dir(True)
                     if selected_path is None:
                         self.app_print("Exited out of CD")
                         continue
@@ -194,10 +191,68 @@ class ClientInterface(ABC):
                     else:
                         self.app_error(response_cmd)
 
+                case Command.RMDIR:
+                    skip_server_input = False
+                    # get the selected directory from user
+                    selected_path: RelativePath | None = self.select_server_dir(True)
+                    if selected_path is None:
+                        self.app_print("Exited out of RMDIR")
+                        continue
+
+                    out_data: bytes = Encoder.encode({KeyData.REL_PATH: selected_path}, Command.RMDIR)
+                    # send to data to the server
+                    self.conn.send(out_data)
+
+                    # receive server response if it is a valid directory
+                    in_data = self.conn.recv(SIZE)
+                    response: dict = Encoder.decode(in_data)
+                    response_cmd: ResCode = response[KeyData.CMD]
+                    if response_cmd == ResCode.OK:
+                        self.app_print(f"Removed directory {selected_path}")
+                    else:
+                        self.app_error(response_cmd)
+
+                case Command.MKDIR:
+                    skip_server_input = False
+                    # get the selected directory from user
+                    selected_path: RelativePath | None = self.select_server_dir(False, True)
+                    if selected_path is None:
+                        self.app_print("Exited out of MKDIR")
+                        continue
+
+                    out_data: bytes = Encoder.encode({KeyData.REL_PATH: selected_path}, Command.MKDIR)
+                    # send to data to the server
+                    self.conn.send(out_data)
+
+                    # receive server response if it is a valid directory
+                    in_data = self.conn.recv(SIZE)
+                    response: dict = Encoder.decode(in_data)
+                    response_cmd: ResCode = response[KeyData.CMD]
+                    if response_cmd == ResCode.OK:
+                        self.app_print(f"Added directory {selected_path}")
+                    else:
+                        self.app_error(response_cmd)
+
+                case Command.DELETE:
+                    skip_server_input = False
+                    selected_paths: list[RelativePath] = self.select_server_files()
+                    for selected_path in selected_paths:
+                        out_data: bytes = Encoder.encode({KeyData.REL_PATH:selected_path}, Command.DELETE)
+                        self.conn.send(out_data)
+
+                        in_data = self.conn.recv(SIZE)
+                        response: dict = Encoder.decode(in_data)
+                        response_cmd: ResCode = response[KeyData.CMD]
+                        if response_cmd == ResCode.OK:
+                            self.app_print(f"Deleted directory {selected_path}")
+                        else:
+                            self.app_error(response_cmd)
+
+
                 # default case
                 case _:
                     self.app_error(ResCode.INVALID_CMD)
-                    have_input = False
+                    skip_server_input = False
 
         self.app_error(ResCode.DISCONNECT)
         self.conn.close()  ## close the connection
@@ -213,6 +268,10 @@ class ClientInterface(ABC):
         response_cmd: ResCode = response[KeyData.CMD]
 
         return response_cmd
+
+    @abstractmethod
+    def clear_screen(self) -> None:
+        pass
 
     @abstractmethod
     def rename_file_error(self, file_name: str) -> str:
@@ -255,7 +314,7 @@ class ClientInterface(ABC):
         pass
 
     @abstractmethod
-    def select_server_dir(self) -> RelativePath:
+    def select_server_dir(self, exists: bool, skip_verification: bool = False) -> RelativePath:
         pass
 
     @abstractmethod

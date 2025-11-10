@@ -6,6 +6,26 @@ to perform.
     
 from enum import Enum, IntEnum
 
+
+def format_table(table_data) -> str:
+    if not table_data:
+        return ""
+
+    # Calculate maximum column widths
+    col_widths = [max(len(str(item)) for item in col) for col in zip(*table_data)]
+
+    # Build a list of formatted row strings
+    formatted_rows = []
+    for row in table_data:
+        # Format each item in the row with the correct padding
+        padded_items = [str(item).ljust(col_widths[i]) for i, item in enumerate(row)]
+        # Join the padded items with a separator to form one row string
+        formatted_rows.append("  ".join(padded_items))
+
+    # Join all the row strings with a newline character
+    return "\n".join(formatted_rows)
+
+
 SIZE = 1024
 
 def auto() -> int:
@@ -16,6 +36,7 @@ def auto() -> int:
         auto.counter = 0
     auto.counter += 1
     return auto.counter
+
 
 class Command(Enum):
     """
@@ -29,7 +50,9 @@ class Command(Enum):
     LOGOUT = auto(), "Log out"
     UPLOAD = auto(), "Upload a file"
     CD = auto(), "Change directory"
-    RMDIR = auto(), "Delete a folder/directory"
+    RMDIR = auto(), "Delete a directory"
+    MKDIR = auto(), "Create a new directory"
+    CLS = auto(), "Clear the screen"
     VERIFY = auto(), "Private command"
 
     def __new__(cls, num: int, desc: str):
@@ -40,10 +63,14 @@ class Command(Enum):
 
     @staticmethod
     def cmd_str() -> str:
-        data = "Available Commands:\n"
-        for command in Command:
-            data += f"{command.name}: {command.desc}\n"
-        return data
+        header = "Available Commands:\n"
+
+        # Convert Enum members to a list of lists, excluding the last one
+        table_data = [["Commands", "Description"]]
+        for command in list(Command)[:-1]:  # Excludes VERIFY
+            table_data.append([command.name, command.desc])
+
+        return format_table(table_data)
 
     @staticmethod
     def from_str(name: str) -> "Command | None":
@@ -61,7 +88,7 @@ class ResCode(IntEnum):
     OK = auto(), "Request accepted"
     ERROR = auto(), "Request failed"
     DISCONNECT = auto(), "Disconnect from server"
-    INVALID_CMD = auto(), f"Invalid command:\n{Command.cmd_str()}"
+    INVALID_CMD = auto(), f"{Command.cmd_str()}"
     INVALID_ARGS = auto(), "Invalid arguments"
     LOGIN_NEEDED = auto(), "Login required"
     UPLOAD_FAILED = auto(), "Upload failed"

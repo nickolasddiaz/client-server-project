@@ -1,7 +1,9 @@
+import glob
 from pathlib import Path
+import os
+import shutil
 
-import relativepath
-from relativepath import RelativePath
+
 from type import SIZE
 
 
@@ -97,3 +99,41 @@ class Transfer:
                 return base_resolved
         except Exception:
             return base_path
+
+    @staticmethod
+    def recursively_remove_dir(base_path: Path, server_dir: Path) -> bool:
+
+        base_path: Path = Transfer.file_traversal(base_path, server_dir)
+
+        try:
+            shutil.rmtree(base_path)
+            print(f"Directory '{base_path}' and its contents deleted successfully.")
+            return True
+        except Exception as e:
+            print(f"Error: {base_path} : {e.strerror}")
+            return False
+
+
+    @staticmethod
+    def create_directory(base_path: Path, server_dir: Path) -> bool:
+        try:
+            base_path: Path = Transfer.file_traversal(base_path, server_dir)
+            base_path.mkdir(parents=True, exist_ok=True)
+            return True
+        except Exception as e:
+            return False
+
+    @staticmethod
+    def delete_file(base_path: Path, server_dir: Path) -> bool:
+        try:
+            base_path: Path = Transfer.file_traversal(base_path, server_dir)
+            if base_path.exists() and base_path.is_file():
+                base_path.unlink()
+                return True
+            else:
+                return False
+        except Exception as e:
+            return False
+
+
+

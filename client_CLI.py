@@ -28,6 +28,10 @@ class ClientCli(ClientInterface):
                         |____/ \___|_|    \_/ \___|_|    |_|   |_|  \___// |\___|\___|\__|
                             """)
 
+
+    def clear_screen(self) -> None:
+        print("\033c", end="")
+
     def rename_file_error(self, file_name: str) -> str:
         self.app_error_print(f"{file_name} already exists: choose a new filename default override file")
         return input(f"\t{self.current_dir.location} > Type in new name:")
@@ -205,7 +209,7 @@ class ClientCli(ClientInterface):
             else:
                 return path_file
 
-    def select_server_dir(self) -> RelativePath | None:
+    def select_server_dir(self, exists: bool, skip_verification: bool = False) -> RelativePath:
         """
         Takes string input from user casts it to RelativePath object and checks if it exists
         Returns directory path if valid, None if empty input
@@ -220,10 +224,11 @@ class ClientCli(ClientInterface):
             path_file = copy.deepcopy(self.current_dir) / in_files
 
             # Verify directory exists and is a directory
-            valid_dir: ResCode = self.verify(True, True, path_file)
-            if valid_dir != ResCode.OK:
-                self.app_error(valid_dir)
-                continue
+            if not skip_verification:
+                valid_dir: ResCode = self.verify(True, exists, path_file)
+                if valid_dir != ResCode.OK:
+                    self.app_error(valid_dir)
+                    continue
 
             return path_file
 

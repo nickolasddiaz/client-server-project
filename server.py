@@ -3,6 +3,7 @@ import socket
 import threading
 from pathlib import Path
 
+
 from encoder import Encoder
 from file_transfer import Transfer
 from type import Command, ResCode, KeyData, SIZE
@@ -13,7 +14,7 @@ IP = "0.0.0.0"
 PORT = 4453
 ADDR = (IP, PORT)
 SERVER_DIR = RelativePath.from_base("server_location")
-
+SERVER_DIR.path().mkdir(parents=True, exist_ok=True)
 
 ### to handle the clients
 def handle_client(conn, addr):
@@ -151,11 +152,37 @@ def handle_client(conn, addr):
                 selected_path: RelativePath = in_data[KeyData.REL_PATH]
 
                 if selected_path.isdir and (SERVER_DIR / selected_path).path().exists():
-                    info: dict = {KeyData.REL_PATH: selected_path}
-                    out_data: bytes = Encoder.encode(info, ResCode.OK)
+                    out_data: bytes = Encoder.encode({}, ResCode.OK)
                 else:
                     out_data: bytes = Encoder.encode({}, ResCode.EXISTS)
 
+                conn.send(out_data)
+
+            case Command.RMDIR:
+                selected_path: RelativePath = in_data[KeyData.REL_PATH]
+
+                if Transfer.recursively_remove_dir(SERVER_DIR.path(), selected_path.path()):
+                    out_data: bytes = Encoder.encode({}, ResCode.OK)
+                else:
+                    out_data: bytes = Encoder.encode({}, ResCode.EXISTS)
+                conn.send(out_data)
+
+            case Command.MKDIR:
+                selected_path: RelativePath = in_data[KeyData.REL_PATH]
+
+                if Transfer.create_directory(SERVER_DIR.path(), selected_path.path()):
+                    out_data: bytes = Encoder.encode({}, ResCode.OK)
+                else:
+                    out_data: bytes = Encoder.encode({}, ResCode.EXISTS)
+                conn.send(out_data)
+
+            case Command.DELETE:
+                selected_path: RelativePath = in_data[KeyData.REL_PATH]
+
+                if Transfer.delete_file(SERVER_DIR.path(), selected_path.path()):
+                    out_data: bytes = Encoder.encode({}, ResCode.OK)
+                else:
+                    out_data: bytes = Encoder.encode({}, ResCode.EXISTS)
                 conn.send(out_data)
 
             # default case
