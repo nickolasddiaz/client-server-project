@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import sqlite3
 import bcrypt # not default it python
 # 72-character limit
@@ -6,6 +5,12 @@ import bcrypt # not default it python
 
 
 class DataStorage():
+    """
+    Goal:
+    store username and passwords, be able to verify users
+    Store/retrieve network statistics, such as upload/download data rates, file transfer times
+    and system response times
+    """
 
     def __init__(self):
         conn = sqlite3.connect('data.db')
@@ -33,20 +38,7 @@ class DataStorage():
     def get_statistics(self, username: str, password: str) -> dict:
         pass
 
+    def set_statistics(self):
+        pass
 
 
-@dataclass
-class NetworkStat():
-    """
-    Stores the network statistics
-    the amount in bytes in seconds
-    for the response, download and upload
-    Calculate the rate seconds/bytes
-    """
-
-    response_seconds: float = 0.0
-    response_amount: float = 0.0
-    download_seconds: float = 0.0
-    download_amount: int = 0.0
-    upload_seconds: float = 0.0
-    upload_amount: int = 0.0
