@@ -1,4 +1,3 @@
-import os
 import socket
 import threading
 from pathlib import Path

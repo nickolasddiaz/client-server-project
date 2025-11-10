@@ -1,4 +1,5 @@
 import socket
+from functools import partialmethod, partial
 from pathlib import Path
 
 from file_transfer import Transfer
@@ -96,7 +97,8 @@ class ClientInterface(ABC):
 
                         # sending the file
                         self.app_print(f"Uploading {file_name}...")
-                        succeeded: bool = Transfer.send_file(self.conn, client_path, byte_file)
+
+                        succeeded: bool = Transfer.send_file(self.conn, client_path, byte_file, self.progress_bar)
                         if not succeeded:
                             self.app_error_print(f"File {file_name} failed to be transferred")
                             continue
@@ -162,7 +164,8 @@ class ClientInterface(ABC):
 
                         # Receive the file
                         self.app_print(f"Downloading {file_name}...")
-                        succeeded: bool = Transfer.recv_file(self.conn, local_dir, file_name, byte_file)
+
+                        succeeded: bool = Transfer.recv_file(self.conn, local_dir, file_name, byte_file, self.progress_bar)
 
                         if succeeded:
                             self.app_print(f"File {file_name} downloaded successfully to {local_dir}")
@@ -314,7 +317,7 @@ class ClientInterface(ABC):
         pass
 
     @abstractmethod
-    def select_server_dir(self, exists: bool, skip_verification: bool = False) -> RelativePath:
+    def select_server_dir(self, exists: bool, skip_verification: bool = False) -> RelativePath|None:
         pass
 
     @abstractmethod
@@ -330,5 +333,5 @@ class ClientInterface(ABC):
         pass
 
     @abstractmethod
-    def progress_bar(self, progress: int) -> None:
+    def progress_bar(self, progress: int, byte_per_sec: int, num_bytes: int) -> None:
         pass

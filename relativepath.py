@@ -95,6 +95,8 @@ class RelativePath:
     @property
     def time_str(self) -> str:
         """Returns a human-readable string of the modification time."""
+        if self.isdir:
+            return ""
         return time.ctime(self.time)
 
     @property
@@ -110,6 +112,9 @@ class RelativePath:
     @property
     def str_bytes(self) -> str:
         """Returns a human-readable string of the file size with appropriate unit."""
+        if self.isdir:
+            return ""
+
         if self.bytes == 0:
             return "0 B"
 

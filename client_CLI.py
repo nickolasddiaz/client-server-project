@@ -1,5 +1,6 @@
 import copy
 import os
+import shutil
 from pathlib import Path
 
 import sys
@@ -7,7 +8,7 @@ import getpass
 
 from client_interface import ClientInterface
 from relativepath import RelativePath
-from type import Command, ResCode
+from type import Command, ResCode, format_table, format_bytes, format_time
 
 
 class ClientCli(ClientInterface):
@@ -101,8 +102,11 @@ class ClientCli(ClientInterface):
         """
         Prints the directory when received, executed when DIR/TREE command is executed
         """
+        path_table: list[list[str]] = []
         for path in rel_paths:
-            print(path)
+            path_table.append(["📁" if path.isdir else "📄",path.true_name, path.str_bytes ,path.time_str])
+
+        print(format_table(path_table,["📁", "Name", "Bytes", "Modified Time"]))
 
     def receive_user_pass(self) -> None:
         """
@@ -209,7 +213,7 @@ class ClientCli(ClientInterface):
             else:
                 return path_file
 
-    def select_server_dir(self, exists: bool, skip_verification: bool = False) -> RelativePath:
+    def select_server_dir(self, exists: bool, skip_verification: bool = False) -> RelativePath|None:
         """
         Takes string input from user casts it to RelativePath object and checks if it exists
         Returns directory path if valid, None if empty input
@@ -234,21 +238,46 @@ class ClientCli(ClientInterface):
 
     # https://gist.github.com/sibosutd/c1d9ef01d38630750a1d1fe05c367eb8
     # modified script from Sibo
-    def progress_bar(self, progress: int) -> None:
+    def progress_bar(self, progress: int, byte_per_sec: int, num_bytes: int) -> None:
         """
-        Displays a progress bar, from 0-99, when greater than 99 kill progress bar
-        """
+            Displays a progress bar, from 0-99, when greater than 99 kill progress bar
+            Displays bytes per second formatted in B, KB, MB, or GB
+            Displays the estimated time for it to finish
+
+            Args:
+                progress: int displays the amount of progress done (0-100)
+                byte_per_sec: display the amount of bytes per second
+                num_bytes: display the total amount of bytes to be received
+            """
         if progress > 99:
-            sys.stdout.write('\r')
-            sys.stdout.write(' ' * 100 + '\n')
+            sys.stdout.write('\n')
             sys.stdout.flush()
             return
 
-        bar_length: int = 30
+        # dynamically get the terminal width
+        bar_length: int = shutil.get_terminal_size().columns * 3 // 6
         bar_ratio: int = 100 // bar_length
-        sys.stdout.write('\r') # \r (carriage return) returns the cursor to the start of the line
-        sys.stdout.write("Finishing: {:{}} {:>3}%"
-                         .format(progress // bar_ratio * '🏁', bar_length, progress))
+
+        if bar_ratio == 0:
+            bar_ratio = 1
+
+        # Calculate estimated time remaining
+        bytes_remaining = num_bytes * (100 - progress) / 100
+        if byte_per_sec > 0:
+            time_remaining = bytes_remaining / byte_per_sec
+        else:
+            time_remaining = -1  # Infinite or unknown
+
+        # Format the output components
+        speed_str = format_bytes(byte_per_sec) + "/s"
+        total_size_str = format_bytes(num_bytes)
+        time_str = format_time(time_remaining)
+
+        sys.stdout.write('\r')  # \r (carriage return) returns the cursor to the start of the line
+        sys.stdout.write("\033[32mTransferring: {:{}} {:>3}% | {} | {} | ETA: {}\033[0m"
+                         .format(progress // bar_ratio * '0', bar_length, progress,
+                                 speed_str, total_size_str, time_str))
+        sys.stdout.flush()
 
 
 
