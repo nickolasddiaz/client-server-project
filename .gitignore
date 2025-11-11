@@ -35,3 +35,7 @@ pip-delete-this-directory.txt
 # OS
 .DS_Store
 Thumbs.db
+
+
+# created files
+data.db
