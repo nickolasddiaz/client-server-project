@@ -1,10 +1,9 @@
 import socket
-from functools import partialmethod, partial
 from pathlib import Path
 
 from file_transfer import Transfer
 from relativepath import RelativePath
-from type import Command, ResCode, KeyData, SIZE
+from type import Command, ResCode, KeyData, SIZE, format_bytes, format_time
 from encoder import Encoder
 
 from abc import ABC, abstractmethod
@@ -18,8 +17,8 @@ class ClientInterface(ABC):
         self.ADDR: tuple[str, int] = (self.IP, self.PORT)
         self.current_dir: RelativePath = RelativePath.from_base()
         self.conn = None
-        self.local_user: str = ""
-        self.local_pass: str = ""
+        self.user_name: str = ""
+        self.password: str = ""
 
     def run(self):
         self.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -146,17 +145,6 @@ class ClientInterface(ABC):
                             self.conn.send(cancel_data)
                             continue
 
-                        # Check if file already exists locally
-                        local_file_path = local_dir / file_name
-                        if local_file_path.exists():
-                            new_name = self.rename_file(file_name)
-                            if new_name:
-                                file_name = new_name
-                            else:
-                                self.app_print("Download cancelled")
-                                cancel_data: bytes = Encoder.encode({}, ResCode.CANCEL)
-                                self.conn.send(cancel_data)
-                                continue
 
                         # Send OK to start receiving file
                         ok_data: bytes = Encoder.encode({}, ResCode.OK)
@@ -261,9 +249,20 @@ class ClientInterface(ABC):
         self.conn.close()  ## close the connection
         self.app_exit()
 
-    def verify(self, is_dir: bool, exists: bool, rel_path: RelativePath) -> ResCode:
+    def verify_resource(self, is_dir: bool, exists: bool, rel_path: RelativePath) -> ResCode:
         out_dict = {KeyData.IS_DIR: is_dir, KeyData.EXISTS: exists, KeyData.REL_PATH: rel_path}
-        out_data: bytes = Encoder.encode(out_dict, Command.VERIFY)
+        out_data: bytes = Encoder.encode(out_dict, Command.VERIFY_RES)
+        self.conn.send(out_data)
+
+        in_data = self.conn.recv(SIZE)
+        response: dict = Encoder.decode(in_data)
+        response_cmd: ResCode = response[KeyData.CMD]
+
+        return response_cmd
+
+    def verify_userpass(self) -> ResCode:
+        out_dict = {KeyData.USER_NAME: self.user_name, KeyData.PASSWORD: self.password}
+        out_data: bytes = Encoder.encode(out_dict, Command.VERIFY_PAS)
         self.conn.send(out_data)
 
         in_data = self.conn.recv(SIZE)
@@ -274,14 +273,6 @@ class ClientInterface(ABC):
 
     @abstractmethod
     def clear_screen(self) -> None:
-        pass
-
-    @abstractmethod
-    def rename_file_error(self, file_name: str) -> str:
-        pass
-
-    @abstractmethod
-    def rename_file(self, file_name: str) -> str:
         pass
 
     @abstractmethod
@@ -335,3 +326,21 @@ class ClientInterface(ABC):
     @abstractmethod
     def progress_bar(self, progress: int, byte_per_sec: int, num_bytes: int) -> None:
         pass
+
+    @staticmethod
+    def progress_str(progress: int, byte_per_sec: int, num_bytes: int) -> str:
+        # 0% | 0.00 B/s | 00.00 KB | ETA: ∞
+
+        # Calculate estimated time remaining
+        bytes_remaining = num_bytes * (100 - progress) / 100
+        if byte_per_sec > 0:
+            time_remaining = bytes_remaining / byte_per_sec
+        else:
+            time_remaining = -1  # Infinite or unknown
+
+
+        speed_str = format_bytes(byte_per_sec) + "/s"
+        total_size_str = format_bytes(num_bytes)
+        time_str = format_time(time_remaining)
+
+        return f"{progress}% | {speed_str} | {total_size_str} | ETA: {time_str}"

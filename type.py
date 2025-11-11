@@ -66,7 +66,9 @@ class Command(Enum):
     MKDIR = auto(), "Create a new directory"
     CLS = auto(), "Clear the screen"
     STATISTICS = auto(), "Receive network statistics"
-    VERIFY = auto(), "Private command"
+    VERIFY_RES = auto(), "Private command to verify a resource is a directory/file and exists"
+    VERIFY_PAS = auto(), "Private command to verify a user/pass is correct"
+
 
     def __new__(cls, num: int, desc: str):
         obj = object.__new__(cls)
@@ -80,7 +82,7 @@ class Command(Enum):
 
         # Convert Enum members to a list of lists, excluding the last one
         table_data = []
-        for command in list(Command)[:-1]:  # Excludes VERIFY
+        for command in list(Command)[:-2]:  # Excludes VERIFY_RES, VERIFY_PAS
             table_data.append([command.name, command.desc])
 
         return format_table(table_data, ["Commands", "Description"])
@@ -116,7 +118,6 @@ class ResCode(IntEnum):
 
 
     PASS_REQUESTED = auto(), "Password requested"
-    PASS_REQUIRED = auto(), "Password required"
     AUTH_FAILED = auto(), "Authentication failed"
     CANCEL = auto(), "Cancel requested"
 
@@ -137,6 +138,8 @@ class KeyData(IntEnum):
     REL_PATHS = auto()
     FILE_NAME = auto()
     BYTES = auto()
+    USER_NAME = auto()
+    PASSWORD = auto()
 
     EXISTS = auto()
     IS_DIR = auto()

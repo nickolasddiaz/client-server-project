@@ -112,8 +112,15 @@ class ClientCli(ClientInterface):
         """
         Prompts for a username and a password.
         """
-        self.local_user = input("Enter username: ")
-        self.local_pass = getpass.getpass("Enter password: ")
+        while True:
+            self.user_name = input("Enter username: ")
+            self.password = getpass.getpass("Enter password: ")
+
+            response_code: ResCode = self.verify_userpass()
+            if response_code ==  ResCode.OK:
+                return
+            else:
+                self.app_error(response_code)
 
 
     def select_server_files(self) -> list[RelativePath]:
@@ -132,7 +139,7 @@ class ClientCli(ClientInterface):
             path_file = copy.deepcopy(self.current_dir) / in_files
 
             # Verify file exists and is a file (not directory)
-            valid_file: ResCode = self.verify(False, True, path_file)
+            valid_file: ResCode = self.verify_resource(False, True, path_file)
             if valid_file != ResCode.OK:
                 self.app_error(valid_file)
                 continue
@@ -171,7 +178,7 @@ class ClientCli(ClientInterface):
             server_path = self.current_dir / new_name
 
             while True:
-                valid_check: ResCode = self.verify(False, False, server_path)
+                valid_check: ResCode = self.verify_resource(False, False, server_path)
 
                 if valid_check == ResCode.OK:
                     # File doesn't exist on server, good to go
@@ -229,7 +236,7 @@ class ClientCli(ClientInterface):
 
             # Verify directory exists and is a directory
             if not skip_verification:
-                valid_dir: ResCode = self.verify(True, exists, path_file)
+                valid_dir: ResCode = self.verify_resource(True, exists, path_file)
                 if valid_dir != ResCode.OK:
                     self.app_error(valid_dir)
                     continue
@@ -261,22 +268,11 @@ class ClientCli(ClientInterface):
         if bar_ratio == 0:
             bar_ratio = 1
 
-        # Calculate estimated time remaining
-        bytes_remaining = num_bytes * (100 - progress) / 100
-        if byte_per_sec > 0:
-            time_remaining = bytes_remaining / byte_per_sec
-        else:
-            time_remaining = -1  # Infinite or unknown
-
-        # Format the output components
-        speed_str = format_bytes(byte_per_sec) + "/s"
-        total_size_str = format_bytes(num_bytes)
-        time_str = format_time(time_remaining)
+        stat_str = self.progress_str(progress, byte_per_sec, num_bytes)
 
         sys.stdout.write('\r')  # \r (carriage return) returns the cursor to the start of the line
-        sys.stdout.write("\033[32mTransferring: {:{}} {:>3}% | {} | {} | ETA: {}\033[0m"
-                         .format(progress // bar_ratio * '0', bar_length, progress,
-                                 speed_str, total_size_str, time_str))
+        sys.stdout.write("\033[32mTransferring: {:{}} {:>3} \033[0m"
+                         .format(progress // bar_ratio * '0', bar_length, stat_str))
         sys.stdout.flush()
 
 

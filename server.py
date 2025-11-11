@@ -35,7 +35,7 @@ def handle_client(conn, addr):
 
         cmd: Command = in_data[KeyData.CMD]
         match cmd:
-            case Command.VERIFY:
+            case Command.VERIFY_RES:
                 is_dir: bool = in_data[KeyData.IS_DIR]
                 exists: bool = in_data[KeyData.EXISTS]
                 rel_path: RelativePath = SERVER_DIR / in_data[KeyData.REL_PATH]
@@ -51,6 +51,15 @@ def handle_client(conn, addr):
                     out_data: bytes = Encoder.encode({}, ResCode.OK)
 
                 conn.send(out_data)
+
+            case Command.VERIFY_PAS:
+                username: str = in_data[KeyData.USER_NAME]
+                password: str = in_data[KeyData.PASSWORD]
+
+                print(username, password)
+
+                # check if it is ok or not will be implemented
+                out_data: bytes = Encoder.encode({}, ResCode.OK)
 
             case Command.LOGOUT:
                 out_data: bytes = Encoder.encode({}, ResCode.DISCONNECT)
