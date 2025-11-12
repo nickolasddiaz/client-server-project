@@ -1,10 +1,14 @@
 import socket
+import time
 from pathlib import Path
+
+from sqlalchemy.util.concurrency import have_greenlet
 
 from file_transfer import Transfer
 from relativepath import RelativePath
 from type import Command, ResCode, KeyData, SIZE, format_bytes, format_time
 from encoder import Encoder
+import tkinter as tk
 
 from abc import ABC, abstractmethod
 
@@ -23,10 +27,10 @@ class ClientInterface(ABC):
     def run(self):
         self.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.conn.connect(self.ADDR)
-        skip_server_input: bool = True
+        have_server_input: bool = True
         while True:  ### multiple communications
 
-            if skip_server_input:
+            if have_server_input:
                 encoded_data: bytes = self.conn.recv(SIZE)
                 response: dict = Encoder.decode(encoded_data)
 
@@ -45,14 +49,14 @@ class ClientInterface(ABC):
                 if in_paths:
                     self.show_dir(in_paths)
 
-            skip_server_input = True
+            have_server_input = True
 
-            in_cmd: Command = self.command_input()
+            in_cmd: Command|None = self.command_input()
 
             match in_cmd:
                 case Command.CLS:
                     self.clear_screen()
-                    skip_server_input = False
+                    have_server_input = False
 
                 case Command.LOGOUT:
                     out_data: bytes = Encoder.encode({}, Command.LOGOUT)
@@ -68,10 +72,10 @@ class ClientInterface(ABC):
 
                 case Command.HELP:
                     self.app_print(Command.cmd_str())
-                    skip_server_input = False
+                    have_server_input = False
 
                 case Command.UPLOAD:
-                    skip_server_input = False
+                    have_server_input = False
                     client_paths: list[tuple[Path, str]] = self.select_client_files()
 
                     for client_path, file_name in client_paths:
@@ -113,8 +117,11 @@ class ClientInterface(ABC):
                             self.app_error_print(f"File {client_path.name} failed to be transferred")
 
                 case Command.DOWNLOAD:
-                    skip_server_input = False
+                    have_server_input = False
                     server_files: list[RelativePath] = self.select_server_files()
+
+                    # Select local directory to save file
+                    local_dir: Path | None = self.select_client_dir()
 
                     for server_file in server_files:
                         # Request download from server
@@ -128,16 +135,13 @@ class ClientInterface(ABC):
                         response_cmd_1: ResCode = response_1[KeyData.CMD]
 
                         if response_cmd_1 != ResCode.OK:
-                            self.app_error(response_cmd_1)
-                            self.app_error_print(f"Cannot download {server_file.location}")
+                            self.app_error_print(f"{response_cmd_1.desc}: Cannot download {server_file.location}")
                             continue
 
                         # Get file info from response
                         file_name: str = response_1[KeyData.FILE_NAME]
                         byte_file: int = response_1[KeyData.BYTES]
 
-                        # Select local directory to save file
-                        local_dir: Path | None = self.select_client_dir()
                         if local_dir is None:
                             self.app_print("Download cancelled")
                             # Send cancel message to server
@@ -161,7 +165,7 @@ class ClientInterface(ABC):
                             self.app_error_print(f"File {file_name} failed to download")
 
                 case Command.CD:
-                    skip_server_input = False
+                    have_server_input = False
                     # get the selected directory from user
                     selected_path: RelativePath | None = self.select_server_dir(True)
                     if selected_path is None:
@@ -183,7 +187,7 @@ class ClientInterface(ABC):
                         self.app_error(response_cmd)
 
                 case Command.RMDIR:
-                    skip_server_input = False
+                    have_server_input = False
                     # get the selected directory from user
                     selected_path: RelativePath | None = self.select_server_dir(True)
                     if selected_path is None:
@@ -204,7 +208,7 @@ class ClientInterface(ABC):
                         self.app_error(response_cmd)
 
                 case Command.MKDIR:
-                    skip_server_input = False
+                    have_server_input = False
                     # get the selected directory from user
                     selected_path: RelativePath | None = self.select_server_dir(False, True)
                     if selected_path is None:
@@ -225,7 +229,7 @@ class ClientInterface(ABC):
                         self.app_error(response_cmd)
 
                 case Command.DELETE:
-                    skip_server_input = False
+                    have_server_input = False
                     selected_paths: list[RelativePath] = self.select_server_files()
                     for selected_path in selected_paths:
                         out_data: bytes = Encoder.encode({KeyData.REL_PATH:selected_path}, Command.DELETE)
@@ -243,7 +247,7 @@ class ClientInterface(ABC):
                 # default case
                 case _:
                     self.app_error(ResCode.INVALID_CMD)
-                    skip_server_input = False
+                    have_server_input = False
 
         self.app_error(ResCode.DISCONNECT)
         self.conn.close()  ## close the connection
