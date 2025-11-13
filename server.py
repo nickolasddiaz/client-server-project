@@ -18,7 +18,7 @@ SERVER_DIR.path().mkdir(parents=True, exist_ok=True)
 ### to handle the clients
 def handle_client(conn, addr):
     print(f"[NEW CONNECTION] {addr} connected.")
-    info: dict = {KeyData.MSG: "Welcome to the server: Type help to list all available commands"}
+    info: dict = {KeyData.MSG: "Welcome to the server: Type help to list all available commands if in CLI or right click for the GUI"}
     out_data: bytes = Encoder.encode(info, ResCode.OK)
     conn.send(out_data)
 
@@ -40,10 +40,10 @@ def handle_client(conn, addr):
                 exists: bool = in_data[KeyData.EXISTS]
                 rel_path: RelativePath = SERVER_DIR / in_data[KeyData.REL_PATH]
 
-                if rel_path.path().exists() ^ exists:
+                if rel_path.path().exists() and not exists:
                     out_data: bytes = Encoder.encode({}, ResCode.EXISTS)
 
-                elif rel_path.path().is_dir() ^ is_dir:
+                elif exists and (rel_path.path().is_dir() and not is_dir):
                     res: ResCode = ResCode.DIRECTORY_NEEDED if is_dir else ResCode.FILE_NEEDED
                     out_data: bytes = Encoder.encode({}, res)
 
@@ -60,6 +60,7 @@ def handle_client(conn, addr):
 
                 # check if it is ok or not will be implemented
                 out_data: bytes = Encoder.encode({}, ResCode.OK)
+                conn.send(out_data)
 
             case Command.LOGOUT:
                 out_data: bytes = Encoder.encode({}, ResCode.DISCONNECT)
@@ -166,7 +167,7 @@ def handle_client(conn, addr):
 
                 conn.send(out_data)
 
-            case Command.RMDIR:
+            case Command.RMDIR | Command.DELETE:
                 selected_path: RelativePath = in_data[KeyData.REL_PATH]
 
                 if Transfer.recursively_remove_dir(SERVER_DIR.path(), selected_path.path()):
@@ -184,13 +185,8 @@ def handle_client(conn, addr):
                     out_data: bytes = Encoder.encode({}, ResCode.EXISTS)
                 conn.send(out_data)
 
-            case Command.DELETE:
-                selected_path: RelativePath = in_data[KeyData.REL_PATH]
-
-                if Transfer.delete_file(SERVER_DIR.path(), selected_path.path()):
-                    out_data: bytes = Encoder.encode({}, ResCode.OK)
-                else:
-                    out_data: bytes = Encoder.encode({}, ResCode.EXISTS)
+            case Command.STATS:
+                out_data: bytes = Encoder.encode({KeyData.STATS: "Dummy stats"}, ResCode.OK)
                 conn.send(out_data)
 
             # default case

@@ -8,7 +8,7 @@ import getpass
 
 from client_interface import ClientInterface
 from relativepath import RelativePath
-from type import Command, ResCode, format_table, format_bytes, format_time
+from type import Command, ResCode, format_table
 
 
 class ClientCli(ClientInterface):
@@ -29,6 +29,8 @@ class ClientCli(ClientInterface):
                         |____/ \___|_|    \_/ \___|_|    |_|   |_|  \___// |\___|\___|\__|
                             """)
 
+    def login_helper(self, response_code: ResCode) -> None:
+        pass # not used in CLI
 
     def clear_screen(self) -> None:
         print("\033c", end="")
@@ -122,8 +124,8 @@ class ClientCli(ClientInterface):
             else:
                 self.app_error(response_code)
 
-
     def select_server_files(self) -> list[RelativePath]:
+
         """
         Takes input as a string converts it to RelativePath
         Verifies each file exists and is a file (not directory)
@@ -198,7 +200,7 @@ class ClientCli(ClientInterface):
 
     def select_client_dir(self) -> Path:
         """
-        Takes string input from user casts it to Path object and checks if it exists
+        Takes string input from user, casts it to Path object and checks if it exists
         Returns directory path if valid, current directory if empty input
         """
         print("Select a directory on your machine (relative or absolute path): Return nothing for current directory")

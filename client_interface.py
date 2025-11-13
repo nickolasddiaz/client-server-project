@@ -1,14 +1,12 @@
+import copy
 import socket
-import time
 from pathlib import Path
 
-from sqlalchemy.util.concurrency import have_greenlet
 
 from file_transfer import Transfer
 from relativepath import RelativePath
 from type import Command, ResCode, KeyData, SIZE, format_bytes, format_time
 from encoder import Encoder
-import tkinter as tk
 
 from abc import ABC, abstractmethod
 
@@ -27,55 +25,43 @@ class ClientInterface(ABC):
     def run(self):
         self.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.conn.connect(self.ADDR)
-        have_server_input: bool = True
+
+        # receive initial message
+
+        encoded_data: bytes = self.conn.recv(SIZE)
+        response: dict = Encoder.decode(encoded_data)
+
+        msg: str | None = response.get(KeyData.MSG)
+        if msg:
+            self.app_print(msg)
+
         while True:  ### multiple communications
-
-            if have_server_input:
-                encoded_data: bytes = self.conn.recv(SIZE)
-                response: dict = Encoder.decode(encoded_data)
-
-                response_cmd: ResCode = response[KeyData.CMD]
-                msg: str | None = response.get(KeyData.MSG)
-                if msg:
-                    self.app_print(msg)
-
-                if response_cmd != ResCode.OK:
-                    self.app_error(response_cmd)
-
-                if response_cmd == ResCode.DISCONNECT:
-                    break
-
-                in_paths: list[RelativePath] | None = response.get(KeyData.REL_PATHS)
-                if in_paths:
-                    self.show_dir(in_paths)
-
-            have_server_input = True
 
             in_cmd: Command|None = self.command_input()
 
             match in_cmd:
                 case Command.CLS:
                     self.clear_screen()
-                    have_server_input = False
 
                 case Command.LOGOUT:
-                    out_data: bytes = Encoder.encode({}, Command.LOGOUT)
+                    self.app_exit()
+
+                case Command.TREE | Command.DIR:
+                    out_data: bytes = Encoder.encode({KeyData.REL_PATH: self.current_dir}, in_cmd)
                     self.conn.send(out_data)
 
-                case Command.DIR:
-                    out_data: bytes = Encoder.encode({KeyData.REL_PATH: self.current_dir}, Command.DIR)
-                    self.conn.send(out_data)
+                    encoded_data: bytes = self.conn.recv(SIZE)
+                    response: dict = Encoder.decode(encoded_data)
 
-                case Command.TREE:
-                    out_data: bytes = Encoder.encode({KeyData.REL_PATH: self.current_dir}, Command.TREE)
-                    self.conn.send(out_data)
+                    in_paths: list[RelativePath] | None = response.get(KeyData.REL_PATHS)
+                    if in_paths:
+                        self.app_print("Directory is Empty")
+                    self.show_dir(in_paths)
 
                 case Command.HELP:
                     self.app_print(Command.cmd_str())
-                    have_server_input = False
 
                 case Command.UPLOAD:
-                    have_server_input = False
                     client_paths: list[tuple[Path, str]] = self.select_client_files()
 
                     for client_path, file_name in client_paths:
@@ -117,7 +103,6 @@ class ClientInterface(ABC):
                             self.app_error_print(f"File {client_path.name} failed to be transferred")
 
                 case Command.DOWNLOAD:
-                    have_server_input = False
                     server_files: list[RelativePath] = self.select_server_files()
 
                     # Select local directory to save file
@@ -165,7 +150,6 @@ class ClientInterface(ABC):
                             self.app_error_print(f"File {file_name} failed to download")
 
                 case Command.CD:
-                    have_server_input = False
                     # get the selected directory from user
                     selected_path: RelativePath | None = self.select_server_dir(True)
                     if selected_path is None:
@@ -186,29 +170,7 @@ class ClientInterface(ABC):
                     else:
                         self.app_error(response_cmd)
 
-                case Command.RMDIR:
-                    have_server_input = False
-                    # get the selected directory from user
-                    selected_path: RelativePath | None = self.select_server_dir(True)
-                    if selected_path is None:
-                        self.app_print("Exited out of RMDIR")
-                        continue
-
-                    out_data: bytes = Encoder.encode({KeyData.REL_PATH: selected_path}, Command.RMDIR)
-                    # send to data to the server
-                    self.conn.send(out_data)
-
-                    # receive server response if it is a valid directory
-                    in_data = self.conn.recv(SIZE)
-                    response: dict = Encoder.decode(in_data)
-                    response_cmd: ResCode = response[KeyData.CMD]
-                    if response_cmd == ResCode.OK:
-                        self.app_print(f"Removed directory {selected_path}")
-                    else:
-                        self.app_error(response_cmd)
-
                 case Command.MKDIR:
-                    have_server_input = False
                     # get the selected directory from user
                     selected_path: RelativePath | None = self.select_server_dir(False, True)
                     if selected_path is None:
@@ -228,10 +190,16 @@ class ClientInterface(ABC):
                     else:
                         self.app_error(response_cmd)
 
-                case Command.DELETE:
-                    have_server_input = False
-                    selected_paths: list[RelativePath] = self.select_server_files()
+                case Command.DELETE | Command.RMDIR:
+                    if in_cmd == Command.DELETE:
+                        selected_paths = self.select_server_files()
+                    else:
+                        selected_paths = [self.select_server_dir(True)]
+
                     for selected_path in selected_paths:
+                        if selected_path is None:
+                            self.app_print(f"Exited out of {in_cmd.name}")
+                            continue
                         out_data: bytes = Encoder.encode({KeyData.REL_PATH:selected_path}, Command.DELETE)
                         self.conn.send(out_data)
 
@@ -239,15 +207,29 @@ class ClientInterface(ABC):
                         response: dict = Encoder.decode(in_data)
                         response_cmd: ResCode = response[KeyData.CMD]
                         if response_cmd == ResCode.OK:
-                            self.app_print(f"Deleted directory {selected_path}")
+                            self.app_print(f"Deleted resource {selected_path}")
                         else:
                             self.app_error(response_cmd)
 
+                case Command.STATS:
+                    out_data: bytes = Encoder.encode({}, Command.STATS)
+                    self.conn.send(out_data)
 
+                    in_data_2 = self.conn.recv(SIZE)
+                    response_2: dict = Encoder.decode(in_data_2)
+                    response_cmd_2: ResCode = response_2[KeyData.CMD]
+                    if response_cmd_2 != ResCode.OK:
+                        self.app_error(response_cmd_2)
+                        continue
+
+                    self.app_print_statistics(response_2[KeyData.STATS])
+
+
+                case Command.VERIFY_PAS:
+                    self.verify_userpass()
                 # default case
                 case _:
                     self.app_error(ResCode.INVALID_CMD)
-                    have_server_input = False
 
         self.app_error(ResCode.DISCONNECT)
         self.conn.close()  ## close the connection
@@ -265,7 +247,7 @@ class ClientInterface(ABC):
         return response_cmd
 
     def verify_userpass(self) -> ResCode:
-        out_dict = {KeyData.USER_NAME: self.user_name, KeyData.PASSWORD: self.password}
+        out_dict = {KeyData.USER_NAME: copy.deepcopy(self.user_name), KeyData.PASSWORD: copy.deepcopy(self.password)}
         out_data: bytes = Encoder.encode(out_dict, Command.VERIFY_PAS)
         self.conn.send(out_data)
 
@@ -273,7 +255,14 @@ class ClientInterface(ABC):
         response: dict = Encoder.decode(in_data)
         response_cmd: ResCode = response[KeyData.CMD]
 
+        self.login_helper(response_cmd)
         return response_cmd
+
+
+    @abstractmethod
+    def login_helper(self, response_code: ResCode) -> None:
+        pass
+
 
     @abstractmethod
     def clear_screen(self) -> None:

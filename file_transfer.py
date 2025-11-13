@@ -135,14 +135,20 @@ class Transfer:
     @staticmethod
     def recursively_remove_dir(base_path: Path, server_dir: Path) -> bool:
 
-        base_path: Path = Transfer.file_traversal(base_path, server_dir)
+        del_path: Path = Transfer.file_traversal(base_path, server_dir)
+
+        if base_path.resolve() == del_path:
+            return False
 
         try:
-            shutil.rmtree(base_path)
-            print(f"Directory '{base_path}' and its contents deleted successfully.")
+            if del_path.is_dir():
+                shutil.rmtree(del_path)
+                print(f"Directory '{del_path}' and its contents deleted successfully.")
+            elif del_path.exists():
+                del_path.unlink()
             return True
         except Exception as e:
-            print(f"Error: {base_path} : {e.strerror}")
+            print(f"Error: {del_path} : {e.strerror}")
             return False
 
 

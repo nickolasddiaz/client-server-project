@@ -65,7 +65,7 @@ class Command(Enum):
     RMDIR = auto(), "Delete a directory"
     MKDIR = auto(), "Create a new directory"
     CLS = auto(), "Clear the screen"
-    STATISTICS = auto(), "Receive network statistics"
+    STATS = auto(), "Receive network statistics"
     VERIFY_RES = auto(), "Private command to verify a resource is a directory/file and exists"
     VERIFY_PAS = auto(), "Private command to verify a user/pass is correct"
 
@@ -140,6 +140,7 @@ class KeyData(IntEnum):
     BYTES = auto()
     USER_NAME = auto()
     PASSWORD = auto()
+    STATS = auto()
 
     EXISTS = auto()
     IS_DIR = auto()
