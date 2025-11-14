@@ -177,9 +177,11 @@ class ClientGui(ClientInterface):
         self.root.after(0, lambda: self.prog_bar.pack())
 
     def progress_bar(self, progress: int, byte_per_sec: int, num_bytes: int) -> None:
-        if progress > 99:
+        if progress == 100:
             self.hide_progress_bar()
             return
+        elif progress > 100:
+            progress = 99
 
         self.show_progress_bar()
         self.root.after(0, lambda: self.prog_var.set(progress))

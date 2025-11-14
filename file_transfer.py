@@ -1,29 +1,31 @@
+import io
+import os
 import time
+import zipfile
 from pathlib import Path
 import shutil
 from typing import Callable
 
+from zipstream import ZipStream
 
 from type import SIZE
 
 
 class Transfer:
     @staticmethod
-    def send_file(conn, file_path: Path, num_bytes: int, progress_func: Callable[[int, int, int], None] = lambda num, num2, num3: None) -> bool:
+    def send_file(conn, zip_file: ZipStream, num_bytes: int, progress_func: Callable[[int, int, int], None] = lambda num, num2, num3: None) -> bool:
         """
         Upload a file by reading from file_path and sending num_bytes
 
         Args:
             conn: Socket connection
-            file_path: Path to the file to send
-            num_bytes: Number of bytes to send
+            zip_file: Path to the file to send
+            num_bytes: Number of bytes to receive, This is NOT accurate, it is only used for the progress bar
             progress_func: callable function to display the progress of the transfer it is an int from 0 to 100
 
         Returns:
             bool: True if successful, False otherwise
         """
-        assert file_path.is_file(), f"Invalid input: '{file_path}' is not a file."
-        assert file_path.exists(), f"Invalid input: '{file_path}' does not exist."
 
         progress_func(0, 0, num_bytes)
         start_time: float = time.perf_counter()
@@ -31,48 +33,40 @@ class Transfer:
 
         try:
             bytes_sent = 0
-            with open(file_path, "rb") as fileToSend:
-                while bytes_sent < num_bytes:
+            for chunk in zip_file:
+                elapsed_time = time.perf_counter() - start_time
 
-                    elapsed_time = time.perf_counter() - start_time
-                    if elapsed_time >= 0.2:
-                        progress_func(bytes_sent * 100 // num_bytes, int(elapsed_bytes/elapsed_time), num_bytes)
-                        start_time = time.perf_counter()
-                        elapsed_bytes = 0
+                # Update progress every 0.2 seconds
+                if elapsed_time >= 0.2:
+                    progress_func(bytes_sent * 100 // num_bytes, int(elapsed_bytes / elapsed_time), num_bytes)
+                    start_time = time.perf_counter()
+                    elapsed_bytes = 0
 
+                conn.sendall(chunk)
+                bytes_sent += len(chunk)
+                elapsed_bytes += len(chunk)
 
-
-                    # Calculate how much to read in this iteration
-                    chunk_size = min(SIZE, num_bytes - bytes_sent)
-                    elapsed_bytes += chunk_size
-                    filedata = fileToSend.read(chunk_size)
-
-                    if not filedata:
-                        # File ended before expected bytes
-                        return False
-
-                    conn.sendall(filedata)
-                    bytes_sent += len(filedata)
-
-            return bytes_sent == num_bytes
+            # Final progress update
+            conn.sendall(b'EOF')
+            return True
 
         except Exception as e:
             print(f"Error sending file: {e}")
             return False
         finally:
-            progress_func(100, 0, num_bytes)
+            progress_func(99, 0, num_bytes)
 
     @staticmethod
-    def recv_file(conn, directory_path: Path, file_name: str, num_bytes: int, progress_func: Callable[[int, int, int], None] = lambda num, num2, num3: None) -> bool:
+    def recv_file(conn, directory_path: Path, num_bytes: int,
+                  progress_func: Callable[[int, int, int], None] = lambda num, num2, num3: None) -> bool:
         """
-        Downloads a file by receiving num_bytes and writing to directory_path/file_name
+        Downloads a file by receiving num_bytes into an in-memory buffer and extracting it.
 
         Args:
             conn: Socket connection
-            directory_path: Directory where file should be saved
-            file_name: Name of the file to create
-            num_bytes: Number of bytes to receive
-            progress_func: callable function to display the progress of the transfer it is an int from 0 to 100
+            directory_path: Directory where file contents should be extracted
+            num_bytes: Number of bytes to receive, used for the progress bar
+            progress_func: Callable to display transfer progress: progress_func(percentage, speed, total_size)
 
         Returns:
             bool: True if successful, False otherwise
@@ -80,42 +74,57 @@ class Transfer:
         assert directory_path.is_dir(), f"Invalid input: '{directory_path}' is not a directory."
         assert directory_path.exists(), f"Invalid input: '{directory_path}' does not exist."
 
+        # create an in-memory bytes buffer instead of a file on disk.
+        in_memory_zip = io.BytesIO()
+
         try:
             bytes_received = 0
-            file_path = directory_path / file_name
-
             progress_func(0, 0, num_bytes)
             start_time: float = time.perf_counter()
             elapsed_bytes: int = 0
 
-            with open(file_path, "wb") as fileToWrite:
-                while bytes_received < num_bytes:
+            # Loop to receive data from the socket
+            while True:
+                elapsed_time = time.perf_counter() - start_time
 
-                    elapsed_time = time.perf_counter() - start_time
-                    if elapsed_time >= 0.2:
-                        progress_func(bytes_received * 100 // num_bytes, int(elapsed_bytes / elapsed_time), num_bytes)
-                        start_time = time.perf_counter()
-                        elapsed_bytes = 0
+                # Update progress every 0.2 seconds
+                if elapsed_time >= 0.2:
+                    speed = int(elapsed_bytes / elapsed_time) if elapsed_time > 0 else 0
+                    progress_func(bytes_received * 100 // num_bytes, speed, num_bytes)
+                    start_time = time.perf_counter()
+                    elapsed_bytes = 0
 
-                    # Calculate how much to receive in this iteration
-                    chunk_size = min(SIZE, num_bytes - bytes_received)
-                    elapsed_bytes += chunk_size
-                    filedata = conn.recv(chunk_size)
+                # Receive data
+                filedata = conn.recv(SIZE)
 
-                    if not filedata:
-                        # Connection closed before expected bytes
-                        return False
+                if filedata == b'EOF':
+                    # Connection closed - transfer complete
+                    break
 
-                    fileToWrite.write(filedata)
-                    bytes_received += len(filedata)
+                # write the received data directly into the memory buffer
+                in_memory_zip.write(filedata)
+                bytes_received += len(filedata)
+                elapsed_bytes += len(filedata)
 
-            return bytes_received == num_bytes
+            # Final progress update
+            progress_func(99, 0, num_bytes)
+
+            # Rewind the buffer to the beginning
+            in_memory_zip.seek(0)
+
+            with zipfile.ZipFile(in_memory_zip, 'r') as zip_ref:
+                zip_ref.extractall(directory_path)
+
+
+            return True
 
         except Exception as e:
             print(f"Error receiving file: {e}")
             return False
         finally:
+            #  close the buffer to release memory immediately
             progress_func(100, 0, num_bytes)
+            in_memory_zip.close()
 
     @staticmethod
     def file_traversal(base_path: Path, start_path: Path) -> Path:
@@ -148,7 +157,7 @@ class Transfer:
                 del_path.unlink()
             return True
         except Exception as e:
-            print(f"Error: {del_path} : {e.strerror}")
+            print(f"Error: {del_path} : {e}")
             return False
 
 
@@ -172,6 +181,3 @@ class Transfer:
                 return False
         except Exception as e:
             return False
-
-
-

@@ -57,10 +57,10 @@ class Command(Enum):
     DELETE = auto(), "Delete a file"
     DIR = auto(), "Show the directory"
     TREE = auto(), "Show every file recursively"
-    DOWNLOAD = auto(), "Download a file"
+    DOWNLOAD = auto(), "Download multiple files/directories"
     HELP = auto(), "Show all available commands"
     LOGOUT = auto(), "Log out"
-    UPLOAD = auto(), "Upload a file"
+    UPLOAD = auto(), "Upload multiple files/directories"
     CD = auto(), "Change directory"
     RMDIR = auto(), "Delete a directory"
     MKDIR = auto(), "Create a new directory"
@@ -113,6 +113,7 @@ class ResCode(IntEnum):
 
     DIRECTORY_NEEDED = auto(), "Directory is needed"
     FILE_NEEDED = auto(), "File is needed"
+    NO_FIlES_SELECTED = auto(), "No Files/selected or chosen an empty directory"
 
     EXISTS = auto(), "Resource exists"
 

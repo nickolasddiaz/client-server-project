@@ -131,7 +131,7 @@ class ClientCli(ClientInterface):
         Verifies each file exists and is a file (not directory)
         Returns when input is empty
         """
-        print("Select multiple files on the server: Return nothing to exit")
+        print("Select multiple files/directories on the server, selection is relative to your current directory: Return nothing to exit")
         paths: list[RelativePath] = []
         while True:
             in_files = input(f"\t{self.current_dir.location} <-|").strip('"')
@@ -141,7 +141,7 @@ class ClientCli(ClientInterface):
             path_file = copy.deepcopy(self.current_dir) / in_files
 
             # Verify file exists and is a file (not directory)
-            valid_file: ResCode = self.verify_resource(False, True, path_file)
+            valid_file: ResCode = self.verify_resource(None, True, path_file)
             if valid_file != ResCode.OK:
                 self.app_error(valid_file)
                 continue
@@ -170,17 +170,12 @@ class ClientCli(ClientInterface):
                 self.app_error(ResCode.FILE_NOT_FOUND)
                 continue
 
-            # Check if it's a file (not directory)
-            if not path_file.is_file():
-                self.app_error(ResCode.FILE_NEEDED)
-                continue
-
             # Check server-side if file would override existing file
             new_name = self.rename_file(path_file.name)
             server_path = self.current_dir / new_name
 
             while True:
-                valid_check: ResCode = self.verify_resource(False, False, server_path)
+                valid_check: ResCode = self.verify_resource(None, False, server_path)
 
                 if valid_check == ResCode.OK:
                     # File doesn't exist on server, good to go
@@ -258,10 +253,12 @@ class ClientCli(ClientInterface):
                 byte_per_sec: display the amount of bytes per second
                 num_bytes: display the total amount of bytes to be received
             """
-        if progress > 99:
+        if progress == 100:
             sys.stdout.write('\n')
             sys.stdout.flush()
             return
+        elif progress > 100:
+            progress = 99
 
         # dynamically get the terminal width
         bar_length: int = shutil.get_terminal_size().columns * 3 // 6

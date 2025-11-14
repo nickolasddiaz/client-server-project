@@ -1,7 +1,9 @@
 import socket
 import threading
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZIP_STORED
 
+from zipstream import ZipStream
 
 from encoder import Encoder
 from file_transfer import Transfer
@@ -40,10 +42,10 @@ def handle_client(conn, addr):
                 exists: bool = in_data[KeyData.EXISTS]
                 rel_path: RelativePath = SERVER_DIR / in_data[KeyData.REL_PATH]
 
-                if rel_path.path().exists() and not exists:
+                if rel_path.path().exists() ^ exists:
                     out_data: bytes = Encoder.encode({}, ResCode.EXISTS)
 
-                elif exists and (rel_path.path().is_dir() and not is_dir):
+                elif exists and is_dir is not None and (rel_path.path().is_dir() ^ is_dir):
                     res: ResCode = ResCode.DIRECTORY_NEEDED if is_dir else ResCode.FILE_NEEDED
                     out_data: bytes = Encoder.encode({}, res)
 
@@ -81,7 +83,6 @@ def handle_client(conn, addr):
 
             case Command.UPLOAD:
                 directory: RelativePath = in_data[KeyData.REL_PATH]
-                file_name: str = in_data[KeyData.FILE_NAME]
                 byte_files: int = in_data[KeyData.BYTES]
 
                 # Validate directory exists
@@ -97,11 +98,11 @@ def handle_client(conn, addr):
 
                 # Receive the file using safe path resolution
                 safe_dir = Transfer.file_traversal(SERVER_DIR.path(), directory.path())
-                worked: bool = Transfer.recv_file(conn, safe_dir, file_name, byte_files)
+                worked: bool = Transfer.recv_file(conn, safe_dir, byte_files)
 
                 # Send back if it worked or not
                 if worked:
-                    info_2: dict = {KeyData.MSG: f"File {file_name} uploaded successfully"}
+                    info_2: dict = {KeyData.MSG: "File uploaded successfully"}
                     out_data_2: bytes = Encoder.encode(info_2, ResCode.OK)
                 else:
                     out_data_2: bytes = Encoder.encode({}, ResCode.UPLOAD_FAILED)
@@ -109,28 +110,31 @@ def handle_client(conn, addr):
                 conn.send(out_data_2)
 
             case Command.DOWNLOAD:
-                file_path: RelativePath = in_data[KeyData.REL_PATH]
-                full_path = SERVER_DIR / file_path
+                file_paths: list[RelativePath] = in_data[KeyData.REL_PATHS]
 
-                # Check if file exists and is a file (not directory)
-                if not full_path.path().exists():
-                    out_data: bytes = Encoder.encode({}, ResCode.FILE_NOT_FOUND)
+                zs = ZipStream(compress_type=ZIP_DEFLATED, compress_level=6) # high compression level, 1-7
+
+                num_bytes: int = 0 # approximated size
+
+                for file_path in file_paths:
+                    full_path = SERVER_DIR / file_path
+                    if not full_path.path().exists() or (full_path.path().is_dir() and not any(full_path.path().iterdir())):
+                        continue
+
+                    safe_path = Transfer.file_traversal(SERVER_DIR.path(), file_path.path())
+
+                    num_bytes += int(safe_path.stat().st_size * .8) # approximation not perfectly accurate
+
+                    zs.add_path(safe_path)
+
+                if zs.is_empty():
+                    out_data: bytes = Encoder.encode({}, ResCode.NO_FIlES_SELECTED)
                     conn.send(out_data)
                     continue
 
-                if not full_path.path().is_file():
-                    out_data: bytes = Encoder.encode({},ResCode.FILE_NEEDED)
-                    conn.send(out_data)
-                    continue
-
-                # Get file size and name
-                file_size = full_path.path().stat().st_size
-                file_name = full_path.path().name
-
-                # Send file info to client
+                # Send the amount of bytes client
                 info: dict = {
-                    KeyData.FILE_NAME: file_name,
-                    KeyData.BYTES: file_size
+                    KeyData.BYTES: num_bytes,
                 }
                 out_data: bytes = Encoder.encode(info, ResCode.OK)
                 conn.send(out_data)
@@ -141,7 +145,7 @@ def handle_client(conn, addr):
                 response_cmd_2: ResCode = response_2[KeyData.CMD]
 
                 if response_cmd_2 == ResCode.CANCEL:
-                    print(f"Client cancelled download of {file_name}")
+                    print("Client cancelled download")
                     continue
 
                 if response_cmd_2 != ResCode.OK:
@@ -149,13 +153,12 @@ def handle_client(conn, addr):
                     continue
 
                 # Send the file
-                safe_path = Transfer.file_traversal(SERVER_DIR.path(), file_path.path())
-                succeeded: bool = Transfer.send_file(conn, safe_path, file_size)
+                succeeded: bool = Transfer.send_file(conn, zs, num_bytes)
 
                 if succeeded:
-                    print(f"File {file_name} sent successfully to {addr}")
+                    print(f"File sent successfully to {addr}")
                 else:
-                    print(f"Failed to send file {file_name} to {addr}")
+                    print(f"Failed to send file to {addr}")
 
             case Command.CD:
                 selected_path: RelativePath = in_data[KeyData.REL_PATH]
