@@ -66,8 +66,10 @@ class Command(Enum):
     MKDIR = auto(), "Create a new directory"
     CLS = auto(), "Clear the screen"
     STATS = auto(), "Receive network statistics"
-    VERIFY_RES = auto(), "Private command to verify a resource is a directory/file and exists"
-    VERIFY_PAS = auto(), "Private command to verify a user/pass is correct"
+    DISCONNECT = auto(), "Disconnect from server"
+    EXIT = auto(), "Exit the program"
+    VERIFY_RES = auto(), "Private cmd to verify a resource is a directory/file and exists"
+    VERIFY_PAS = auto(), "Private cmd to verify a user/pass is correct"
 
 
     def __new__(cls, num: int, desc: str):

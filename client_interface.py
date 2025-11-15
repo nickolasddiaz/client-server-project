@@ -1,12 +1,13 @@
 import copy
 import socket
 from pathlib import Path
-from zipfile import ZIP_DEFLATED, ZIP_STORED
+from zipfile import ZIP_DEFLATED
 
 from zipstream import ZipStream
 
 from file_transfer import Transfer
 from relativepath import RelativePath
+from settings import Settings
 from type import Command, ResCode, KeyData, SIZE, format_bytes, format_time
 from encoder import Encoder
 
@@ -14,19 +15,14 @@ from abc import ABC, abstractmethod
 
 
 class ClientInterface(ABC):
-
     def __init__(self):
-        self.IP: str = "localhost"
-        self.PORT: int = 4453
-        self.ADDR: tuple[str, int] = (self.IP, self.PORT)
+        self.sett = Settings()
         self.current_dir: RelativePath = RelativePath.from_base()
         self.conn = None
-        self.user_name: str = ""
-        self.password: str = ""
 
     def run(self):
-        self.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.conn.connect(self.ADDR)
+
+        self.connect_helper()
 
         # receive initial message
 
@@ -45,7 +41,7 @@ class ClientInterface(ABC):
                 case Command.CLS:
                     self.clear_screen()
 
-                case Command.LOGOUT:
+                case Command.EXIT:
                     self.app_exit()
 
                 case Command.TREE | Command.DIR:
@@ -56,8 +52,9 @@ class ClientInterface(ABC):
                     response: dict = Encoder.decode(encoded_data)
 
                     in_paths: list[RelativePath] | None = response.get(KeyData.REL_PATHS)
-                    if in_paths:
+                    if not in_paths:
                         self.app_print("Directory is Empty")
+                        in_paths = []
                     self.show_dir(in_paths)
 
                 case Command.HELP:
@@ -66,7 +63,7 @@ class ClientInterface(ABC):
                 case Command.UPLOAD:
                     client_paths: list[tuple[Path, str]] = self.select_client_files()
 
-                    zs = ZipStream(compress_type=ZIP_DEFLATED, compress_level=6) # high compression level, 1-7
+                    zs = ZipStream(compress_type=ZIP_DEFLATED, compress_level=self.sett.COMPRESS_LVL) # high compression level, 1-7
 
                     num_bytes: int = 0  # approximated size
 
@@ -74,7 +71,7 @@ class ClientInterface(ABC):
                         if not client_path.exists() or (client_path.is_dir() and not any(client_path.iterdir())):
                             continue
 
-                        num_bytes += int(client_path.stat().st_size * .8) # approximation not perfectly accurate
+                        num_bytes += int(client_path.stat().st_size) # approximation not perfectly accurate
 
                         zs.add_path(client_path, file_name)
 
@@ -155,7 +152,7 @@ class ClientInterface(ABC):
                     succeeded: bool = Transfer.recv_file(self.conn, local_dir, byte_file, self.progress_bar)
 
                     if succeeded:
-                        self.app_print("File downloaded successfully to {local_dir}")
+                        self.app_print(f"File downloaded successfully to {local_dir}")
                     else:
                         self.app_error_print("File failed to download")
 
@@ -234,9 +231,11 @@ class ClientInterface(ABC):
 
                     self.app_print_statistics(response_2[KeyData.STATS])
 
-
-                case Command.VERIFY_PAS:
+                case Command.DISCONNECT:
+                    self.connect_helper()
+                case Command.LOGOUT:
                     self.verify_userpass()
+
                 # default case
                 case _:
                     self.app_error(ResCode.INVALID_CMD)
@@ -256,23 +255,70 @@ class ClientInterface(ABC):
 
         return response_cmd
 
-    def verify_userpass(self) -> ResCode:
-        out_dict = {KeyData.USER_NAME: copy.deepcopy(self.user_name), KeyData.PASSWORD: copy.deepcopy(self.password)}
-        out_data: bytes = Encoder.encode(out_dict, Command.VERIFY_PAS)
-        self.conn.send(out_data)
+    def connect_helper(self) -> None:
+        self.welcome_connection()
+        while True:
+            ip, port = self.get_connection()
+            if port.isdigit() and self.sett.set_client_addr(ip, int(port) & 0xFFFF):
+                break
 
-        in_data = self.conn.recv(SIZE)
-        response: dict = Encoder.decode(in_data)
-        response_cmd: ResCode = response[KeyData.CMD]
+        self.sett.save_changes()
 
-        self.login_helper(response_cmd)
-        return response_cmd
+        self.conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.conn.connect(self.sett.CLIENT_ADDR)
+        self.print_connection_success()
 
+        # go to verify user
+        self.verify_userpass()
+
+    def verify_userpass(self) -> None:
+        self.welcome_login()
+        while True:
+            username, password = self.get_login()
+
+            out_dict = {KeyData.USER_NAME: username, KeyData.PASSWORD: password}
+            out_data: bytes = Encoder.encode(out_dict, Command.VERIFY_PAS)
+            self.conn.send(out_data)
+
+            in_data = self.conn.recv(SIZE)
+            response: dict = Encoder.decode(in_data)
+            response_cmd: ResCode = response[KeyData.CMD]
+
+            if response_cmd == ResCode.OK:
+                break
+            else:
+                self.app_error(response_cmd)
+
+        self.sett.USERNAME = username
+        self.sett.PASSWORD = password # password is not saved
+        self.sett.save_changes()
+
+
+        self.print_login_success()
 
     @abstractmethod
-    def login_helper(self, response_code: ResCode) -> None:
+    def welcome_connection(self):
         pass
 
+    @abstractmethod
+    def get_connection(self) -> tuple[str,str]:
+        pass
+
+    @abstractmethod
+    def print_connection_success(self):
+        pass
+
+    @abstractmethod
+    def welcome_login(self):
+        pass
+
+    @abstractmethod
+    def get_login(self) -> tuple[str,str]:
+        pass
+
+    @abstractmethod
+    def print_login_success(self):
+        pass
 
     @abstractmethod
     def clear_screen(self) -> None:
@@ -304,10 +350,6 @@ class ClientInterface(ABC):
 
     @abstractmethod
     def show_dir(self, rel_paths: list[RelativePath]) -> None:
-        pass
-
-    @abstractmethod
-    def receive_user_pass(self) -> None:
         pass
 
     @abstractmethod

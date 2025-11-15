@@ -7,7 +7,6 @@ import time
 from pathlib import Path
 
 from client_interface import ClientInterface
-from encoder import Encoder
 from relativepath import RelativePath
 from type import Command, ResCode
 import tkinter as tk
@@ -17,6 +16,12 @@ from tkinter import filedialog, ttk
 class ClientGui(ClientInterface):
     def __init__(self):
         super().__init__()
+        self.try_login: bool = False
+        self.try_connect: bool = False
+        self.PORT_str = None
+        self.IP_str = None
+        self.connect_str = None
+        self.connect_frame = None
         self.chosen_dir: None | str = None
         self.rename_str = None
         self.rename_initial = None
@@ -51,7 +56,94 @@ class ClientGui(ClientInterface):
         self.prog_label = None
         self.prog_bar = None
         self.prog_frame = None
-        self.stored_command: Command|None = Command.DIR
+        self.stored_command: Command|None = None
+
+    def welcome_connection(self):
+        """Show connection screen and reset state"""
+        self.try_connect = False
+        self.connect_show()
+
+    def get_connection(self) -> tuple[str, str]:
+        """Wait for user to submit connection details"""
+        while not self.try_connect:
+            time.sleep(.1)
+
+        self.try_connect = False
+        return copy.deepcopy(self.IP_str.get()), copy.deepcopy(self.PORT_str.get())
+
+    def print_connection_success(self):
+        """Hide connection screen after successful connection"""
+        self.app_print("Connected to server")
+        self.connect_hide()
+
+    def connect_show(self):
+        """Display only the connection frame"""
+        self.notebook.hide(self.main_frame)
+        self.notebook.hide(self.stat_frame)
+        self.notebook.hide(self.login_frame)
+        self.notebook.hide(self.rename_frame)
+        self.notebook.tab(self.connect_frame, state='normal')
+        self.notebook.select(self.connect_frame)
+
+    def connect_hide(self):
+        """Hide connection frame - login will be shown next"""
+        self.notebook.hide(self.connect_frame)
+
+    def connect_submit(self):
+        """User clicked submit on connection screen"""
+        self.try_connect = True
+
+    def connect_enter(self, event):
+        """Handle Enter key on connection screen"""
+        self.connect_submit()
+
+    def welcome_login(self):
+        """Show login screen and reset state"""
+        self.try_login = False
+        self.show_login()
+
+    def get_login(self) -> tuple[str, str]:
+        """Wait for user to submit login credentials"""
+        while not self.try_login:
+            time.sleep(.1)
+
+        self.try_login = False
+        return copy.deepcopy(self.user_str.get()), copy.deepcopy(self.pass_str.get())
+
+    def print_login_success(self):
+        """Show main app after successful login"""
+        self.app_print("Login successful")
+        self.hide_login()
+        # Trigger initial directory listing
+        self.stored_command = Command.DIR
+
+    def show_login(self):
+        """Display only the login frame"""
+        self.notebook.hide(self.main_frame)
+        self.notebook.hide(self.stat_frame)
+        self.notebook.hide(self.connect_frame)
+        self.notebook.hide(self.rename_frame)
+        self.notebook.tab(self.login_frame, state='normal')
+        self.notebook.select(self.login_frame)
+
+    def hide_login(self):
+        """Hide login and show main application"""
+        self.notebook.hide(self.login_frame)
+        self.notebook.tab(self.main_frame, state='normal')
+        self.notebook.tab(self.stat_frame, state='normal')
+        self.notebook.select(self.main_frame)
+
+    def login_submit(self):
+        """User clicked submit on login screen"""
+        self.try_login = True
+
+    def login_enter(self, event):
+        """Handle Enter key on login screen"""
+        self.login_submit()
+
+    def app_print(self, msg: str) -> None:
+        """Display message in the UI"""
+        self.message_str.set(msg)
 
 
     def clear_screen(self) -> None:
@@ -71,8 +163,6 @@ class ClientGui(ClientInterface):
     def app_error(self, status: ResCode) -> None:
         self.message_str.set(status.desc)
 
-    def app_print(self, msg: str) -> None:
-        self.message_str.set(msg)
 
     def app_error_print(self, msg: str) -> None:
         self.message_str.set(msg)
@@ -93,11 +183,6 @@ class ClientGui(ClientInterface):
     def show_dir(self, rel_paths: list[RelativePath]) -> None:
         self.paths = copy.deepcopy(rel_paths)
         self.refresh_treeview()
-
-    def receive_user_pass(self) -> None:
-        self.notebook.hide(self.main_frame)
-        self.notebook.hide(self.stat_frame)
-        self.notebook.select(self.login_frame)
 
     def select_server_dir(self, exists: bool, skip_verification: bool = False) -> RelativePath | None:
         self.rename_show()
@@ -205,10 +290,11 @@ class ClientGui(ClientInterface):
         self.stat_frame = ttk.Frame(self.notebook)
         self.login_frame = ttk.Frame(self.notebook)
         self.rename_frame = ttk.Frame(self.notebook)
+        self.connect_frame = ttk.Frame(self.notebook)
 
         self.message_str = tk.StringVar()
         self.message_str.set("Message Here")
-        self.message_label = ttk.Label(self.main_frame, textvariable=self.message_str)
+        self.message_label = ttk.Label(self.root, textvariable=self.message_str)
         self.message_label.pack(anchor="w", pady=5)
 
         self.path_label = ttk.Label(self.main_frame, text="")
@@ -251,6 +337,22 @@ class ClientGui(ClientInterface):
         self.notebook.add(self.stat_frame, text="Statistics")
         self.notebook.add(self.login_frame, text="Login")
         self.notebook.add(self.rename_frame, text="Naming")
+        self.notebook.add(self.connect_frame, text="Connect")
+
+        # ------------------- connect screen
+        self.connect_str = tk.StringVar(value="Enter the IP address and port.")
+        tk.Label(self.connect_frame, textvariable=self.connect_str).pack(pady=10)
+
+        tk.Label(self.connect_frame, text="IP address:").pack()
+        self.IP_str = tk.StringVar(value=self.sett.CLIENT_IP)
+        ttk.Entry(self.connect_frame, textvariable=self.IP_str).pack(pady=5)
+
+        tk.Label(self.connect_frame, text="Port:").pack()
+        self.PORT_str = tk.StringVar(value=str(self.sett.PORT))
+        ttk.Entry(self.connect_frame, textvariable=self.PORT_str).pack(pady=5)
+
+        self.connect_frame.bind('<Return>', self.connect_enter)
+        ttk.Button(self.connect_frame, text="Submit", command=self.connect_submit).pack(pady=10)
 
         # ------------------- rename screen
         
@@ -260,7 +362,7 @@ class ClientGui(ClientInterface):
         self.rename_initial = tk.StringVar(value="")
         tk.Label(self.rename_frame, textvariable=self.rename_initial).pack(pady=10)
 
-        tk.Label(self.login_frame, text="Name:").pack()
+        tk.Label(self.rename_frame, text="Name:").pack()
         self.rename_str = tk.StringVar()
         ttk.Entry(self.rename_frame, textvariable=self.rename_str).pack(pady=5)
 
@@ -273,11 +375,11 @@ class ClientGui(ClientInterface):
         tk.Label(self.login_frame, textvariable=self.messages_str).pack(pady=10)
 
         tk.Label(self.login_frame, text="Username:").pack()
-        self.user_str = tk.StringVar()
+        self.user_str = tk.StringVar(value=self.sett.USERNAME)
         ttk.Entry(self.login_frame, textvariable=self.user_str).pack(pady=5)
 
         tk.Label(self.login_frame, text="Password:").pack()
-        self.pass_str = tk.StringVar()
+        self.pass_str = tk.StringVar() # password is not shown
         ttk.Entry(self.login_frame, textvariable=self.pass_str, show="*").pack(pady=5)
 
         self.login_frame.bind('<Return>', self.login_enter)
@@ -311,32 +413,18 @@ class ClientGui(ClientInterface):
         self.notebook.hide(self.main_frame)
         self.notebook.hide(self.stat_frame)
         self.notebook.hide(self.rename_frame)
+        self.notebook.hide(self.login_frame)
         # Select the login tab
-        self.notebook.select(self.login_frame)
+        self.notebook.select(self.connect_frame)
         # Hide the progress bar
         self.hide_progress_bar()
 
         # ------------------- creating a new thread for the two event loops
 
-        self.notebook.bind("<<NotebookTabChanged>>", self.on_notebook_change)
-
-
         self.network_thread = threading.Thread(target=self.run, daemon=True)
         self.network_thread.start()
 
         self.root.mainloop()
-
-    def on_notebook_change(self, event):
-        """
-            This function is called when a notebook tab is changed.
-        """
-        selected_tab_id = self.notebook.select()  # Get the ID of the selected tab
-        tab_text = self.notebook.tab(selected_tab_id, "text")  # Get the text of the selected tab
-
-        # logic here based on the selected tab
-        if tab_text == "Statistics":
-            self.stored_command = Command.STATS
-
 
     def rename_submit(self):
         self.chosen_dir =  copy.deepcopy(self.rename_str.get())
@@ -352,27 +440,6 @@ class ClientGui(ClientInterface):
         self.notebook.tab(self.stat_frame, state='normal')
         self.notebook.hide(self.rename_frame)
         self.notebook.select(self.main_frame)
-
-    def login_submit(self):
-        self.user_name = copy.deepcopy(self.user_str.get())
-        self.password = copy.deepcopy(self.pass_str.get())
-        self.stored_command = Command.VERIFY_PAS
-
-    def login_enter(self, event):
-        self.login_submit()
-
-    def login_helper(self, response_code: ResCode) -> None:
-        if response_code == ResCode.OK:
-            # Show the main and stat tabs
-            self.notebook.tab(self.main_frame, state='normal')
-            self.notebook.tab(self.stat_frame, state='normal')
-            # Hide the login tab
-            self.notebook.hide(self.login_frame)
-            # Switch to the main frame tab
-            self.notebook.select(self.main_frame)
-        else:
-            self.messages_str.set(response_code.desc)
-
 
     def on_select(self, event):
         selected_ids = self.treeview.selection()
@@ -420,23 +487,33 @@ class ClientGui(ClientInterface):
         context_menu.add_command(label="Create Directory", command=self.menu_mkdir)
         context_menu.add_separator()
         context_menu.add_command(label="Refresh", command=self.set_dir)
+        context_menu.add_separator()
+        context_menu.add_command(label="Disconnect", command=self.disconnect)
+        context_menu.add_command(label="Log Out", command=self.logout)
+        context_menu.add_separator()
         context_menu.add_command(label="Quit", command=self.app_exit)
 
         return context_menu
+
+    def disconnect(self):
+        self.stored_command = Command.DISCONNECT
+
+    def logout(self):
+        self.stored_command = Command.LOGOUT
 
     def set_dir(self):
         self.stored_command = Command.DIR
 
     def menu_download(self):
-        """Handle download command from context menu"""
+        """Handle download cmd from context menu"""
         self.stored_command = Command.DOWNLOAD
 
     def menu_upload(self):
-        """Handle upload command from context menu"""
+        """Handle upload cmd from context menu"""
         self.stored_command = Command.UPLOAD
 
     def menu_delete(self):
-        """Handle delete command from context menu"""
+        """Handle delete cmd from context menu"""
         selected_ids = self.treeview.selection()
         if not selected_ids:
             self.message_str.set("No items selected for deletion")
@@ -445,7 +522,7 @@ class ClientGui(ClientInterface):
         self.stored_command = Command.DELETE
 
     def menu_mkdir(self):
-        """Handle mkdir command from context menu"""
+        """Handle mkdir cmd from context menu"""
         self.stored_command = Command.MKDIR
 
     def show_context_menu(self, event):

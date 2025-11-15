@@ -29,8 +29,46 @@ class ClientCli(ClientInterface):
                         |____/ \___|_|    \_/ \___|_|    |_|   |_|  \___// |\___|\___|\__|
                             """)
 
-    def login_helper(self, response_code: ResCode) -> None:
-        pass # not used in CLI
+    def welcome_connection(self):
+        self.app_print(f"Connect to the server "
+                       f"Enter nothing for the default "
+                       f"IP: {self.sett.CLIENT_IP} "
+                       f"Port: {self.sett.PORT} ")
+
+    def get_connection(self) -> tuple[str, str]:
+        ip: str = input("Enter IP: ")
+        port: str = input("Enter port: ")
+
+        if ip == "":
+            ip = self.sett.CLIENT_IP
+        if port == "":
+            port = str(self.sett.PORT)
+
+        return ip, port
+
+    def print_connection_success(self):
+        self.app_print("Connection success")
+
+    def welcome_login(self):
+        self.app_print(f"Login to the server "
+                       f"Enter nothing for the default "
+                       f"Username: {self.sett.USERNAME} ")
+
+    def get_login(self) -> tuple[str, str]:
+        """
+        Prompts for a username and a password.
+        """
+        username: str = input("Enter username: ")
+        password: str = getpass.getpass("Enter password: ") # password is not saved
+
+        if username == "":
+            username = self.sett.USERNAME
+
+        return username, password
+
+
+    def print_login_success(self):
+        self.app_print("Login success")
 
     def clear_screen(self) -> None:
         print("\033c", end="")
@@ -62,9 +100,6 @@ class ClientCli(ClientInterface):
         """
 
         self.app_error_print(status.desc)
-
-        if status.is_auth_related():
-            self.receive_user_pass()
 
     def app_print(self, msg: str) -> None:
         """
@@ -102,7 +137,7 @@ class ClientCli(ClientInterface):
 
     def show_dir(self, rel_paths: list[RelativePath]) -> None:
         """
-        Prints the directory when received, executed when DIR/TREE command is executed
+        Prints the directory when received, executed when DIR/TREE cmd is executed
         """
         path_table: list[list[str]] = []
         for path in rel_paths:
@@ -110,19 +145,7 @@ class ClientCli(ClientInterface):
 
         print(format_table(path_table,["📁", "Name", "Bytes", "Modified Time"]))
 
-    def receive_user_pass(self) -> None:
-        """
-        Prompts for a username and a password.
-        """
-        while True:
-            self.user_name = input("Enter username: ")
-            self.password = getpass.getpass("Enter password: ")
 
-            response_code: ResCode = self.verify_userpass()
-            if response_code ==  ResCode.OK:
-                return
-            else:
-                self.app_error(response_code)
 
     def select_server_files(self) -> list[RelativePath]:
 

@@ -1,19 +1,19 @@
 import socket
 import threading
 from pathlib import Path
-from zipfile import ZIP_DEFLATED, ZIP_STORED
+from zipfile import ZIP_DEFLATED
 
 from zipstream import ZipStream
 
+from database import DataStorage
 from encoder import Encoder
 from file_transfer import Transfer
+from settings import Settings
 from type import Command, ResCode, KeyData, SIZE
 from relativepath import RelativePath
 
 # localhost if needed
-IP = "0.0.0.0"
-PORT = 4453
-ADDR = (IP, PORT)
+sett = Settings()
 SERVER_DIR = RelativePath.from_base("server_location")
 SERVER_DIR.path().mkdir(parents=True, exist_ok=True)
 
@@ -26,6 +26,7 @@ def handle_client(conn, addr):
 
     # delete these variables so it does not cause collisions in the future
     del out_data, info
+    Data = DataStorage()
 
     while True:
         encoded_data = conn.recv(SIZE)
@@ -58,10 +59,14 @@ def handle_client(conn, addr):
                 username: str = in_data[KeyData.USER_NAME]
                 password: str = in_data[KeyData.PASSWORD]
 
-                print(username, password)
+                #verified = Data.verify_user(username, password)
+                verified = True
 
                 # check if it is ok or not will be implemented
-                out_data: bytes = Encoder.encode({}, ResCode.OK)
+                if verified:
+                    out_data: bytes = Encoder.encode({}, ResCode.OK)
+                else:
+                    out_data: bytes = Encoder.encode({}, ResCode.AUTH_FAILED)
                 conn.send(out_data)
 
             case Command.LOGOUT:
@@ -123,7 +128,7 @@ def handle_client(conn, addr):
 
                     safe_path = Transfer.file_traversal(SERVER_DIR.path(), file_path.path())
 
-                    num_bytes += int(safe_path.stat().st_size * .8) # approximation not perfectly accurate
+                    num_bytes += int(safe_path.stat().st_size) # approximation not perfectly accurate
 
                     zs.add_path(safe_path)
 
@@ -224,10 +229,9 @@ def list_directory(server_dir: RelativePath, base_dir: RelativePath, recursive: 
 def main():
     print("Starting the server")
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  ## used IPV4 and TCP connection
-    server.bind(ADDR)  # bind the address
-    print(ADDR)
+    server.bind(sett.SERVER_ADDR)  # bind the address
     server.listen()  ## start listening
-    print(f"server is listening on {IP}: {PORT}")
+    print(f"server is listening on {sett.SERVER_IP}:{sett.PORT}")
     while True:
         conn, addr = server.accept()  ### accept a connection from a client
         thread = threading.Thread(target=handle_client, args=(conn, addr))  ## assigning a thread for each client

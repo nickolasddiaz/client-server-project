@@ -42,12 +42,13 @@ class Transfer:
                     start_time = time.perf_counter()
                     elapsed_bytes = 0
 
-                conn.sendall(chunk)
+                conn.send(chunk)
                 bytes_sent += len(chunk)
                 elapsed_bytes += len(chunk)
 
             # Final progress update
-            conn.sendall(b'EOF')
+            conn.send(b'EOF')
+            print("sent file")
             return True
 
         except Exception as e:
