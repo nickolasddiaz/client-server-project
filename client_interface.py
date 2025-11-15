@@ -19,12 +19,15 @@ class ClientInterface(ABC):
         self.sett = Settings()
         self.current_dir: RelativePath = RelativePath.from_base()
         self.conn = None
+        self.PLATFORM: str = ""
 
     def run(self):
 
         self.connect_helper()
 
         # receive initial message
+        out_data: bytes = Encoder.encode({KeyData.PLATFORM: self.PLATFORM}, Command.STARTING_MSG)
+        self.conn.send(out_data)
 
         encoded_data: bytes = self.conn.recv(SIZE)
         response: dict = Encoder.decode(encoded_data)
@@ -50,6 +53,11 @@ class ClientInterface(ABC):
 
                     encoded_data: bytes = self.conn.recv(SIZE)
                     response: dict = Encoder.decode(encoded_data)
+
+                    response_cmd: ResCode = response[KeyData.CMD]
+                    if response_cmd != ResCode.OK:
+                        self.app_error(response_cmd)
+                        continue
 
                     in_paths: list[RelativePath] | None = response.get(KeyData.REL_PATHS)
                     if not in_paths:
@@ -113,7 +121,6 @@ class ClientInterface(ABC):
                         self.app_print("File  uploaded successfully.")
                     else:
                         self.app_error(response_cmd_3)
-                        self.app_error_print("File  failed to be transferred")
 
                 case Command.DOWNLOAD:
                     server_files: list[RelativePath] = self.select_server_files()
@@ -135,7 +142,7 @@ class ClientInterface(ABC):
                     response_cmd_1: ResCode = response_1[KeyData.CMD]
 
                     if response_cmd_1 != ResCode.OK:
-                        self.app_error_print(f"{response_cmd_1.desc}: Cannot download")
+                        self.app_error(response_cmd_1)
                         del in_data_1
                         continue
 
@@ -234,6 +241,7 @@ class ClientInterface(ABC):
                 case Command.DISCONNECT:
                     self.connect_helper()
                 case Command.LOGOUT:
+                    self.sett.AUTH_KEY = ""
                     self.verify_userpass()
 
                 # default case
@@ -271,8 +279,28 @@ class ClientInterface(ABC):
         # go to verify user
         self.verify_userpass()
 
+    def verify_token(self) -> bool:
+        if self.sett.AUTH_KEY == "":
+            return False
+
+        out_dict = {KeyData.AUTH_TOKEN: self.sett.AUTH_KEY}
+        out_data: bytes = Encoder.encode(out_dict, Command.VERIFY_AUTH)
+        self.conn.send(out_data)
+
+        in_data = self.conn.recv(SIZE)
+        response: dict = Encoder.decode(in_data)
+        response_cmd: ResCode = response[KeyData.CMD]
+
+        return response_cmd == ResCode.OK
+
+
     def verify_userpass(self) -> None:
+        if self.verify_token():
+            self.print_login_success()
+            return
+
         self.welcome_login()
+
         while True:
             username, password = self.get_login()
 
@@ -285,6 +313,7 @@ class ClientInterface(ABC):
             response_cmd: ResCode = response[KeyData.CMD]
 
             if response_cmd == ResCode.OK:
+                self.sett.AUTH_KEY = str(response[KeyData.AUTH_TOKEN])
                 break
             else:
                 self.app_error(response_cmd)

@@ -16,17 +16,12 @@ from relativepath import RelativePath
 sett = Settings()
 SERVER_DIR = RelativePath.from_base("server_location")
 SERVER_DIR.path().mkdir(parents=True, exist_ok=True)
+Data = DataStorage(sett.JWT_SECRET_KEY)
 
 ### to handle the clients
 def handle_client(conn, addr):
     print(f"[NEW CONNECTION] {addr} connected.")
-    info: dict = {KeyData.MSG: "Welcome to the server: Type help to list all available commands if in CLI or right click for the GUI"}
-    out_data: bytes = Encoder.encode(info, ResCode.OK)
-    conn.send(out_data)
 
-    # delete these variables so it does not cause collisions in the future
-    del out_data, info
-    Data = DataStorage()
 
     while True:
         encoded_data = conn.recv(SIZE)
@@ -38,6 +33,21 @@ def handle_client(conn, addr):
 
         cmd: Command = in_data[KeyData.CMD]
         match cmd:
+            case Command.STARTING_MSG:
+                platform: str = in_data[KeyData.PLATFORM]
+                message: str = "Connection successful, welcome to the server: "
+
+                match platform:
+                    case "GUI":
+                        message += "to run commands right click the menu"
+                    case "CLI":
+                        message += "Type help to see a list of commands"
+
+                info: dict = {KeyData.MSG: message}
+                out_data: bytes = Encoder.encode(info, ResCode.OK)
+                conn.send(out_data)
+
+
             case Command.VERIFY_RES:
                 is_dir: bool = in_data[KeyData.IS_DIR]
                 exists: bool = in_data[KeyData.EXISTS]
@@ -59,10 +69,18 @@ def handle_client(conn, addr):
                 username: str = in_data[KeyData.USER_NAME]
                 password: str = in_data[KeyData.PASSWORD]
 
-                #verified = Data.verify_user(username, password)
-                verified = True
+                verified: bool | str = Data.get_token(username, password)
 
-                # check if it is ok or not will be implemented
+                if verified:
+                    out_data: bytes = Encoder.encode({KeyData.AUTH_TOKEN: verified}, ResCode.OK)
+                else:
+                    out_data: bytes = Encoder.encode({}, ResCode.AUTH_FAILED)
+                conn.send(out_data)
+
+            case Command.VERIFY_AUTH:
+                auth: str = in_data[KeyData.AUTH_TOKEN]
+
+                verified = Data.verify_token(auth)
                 if verified:
                     out_data: bytes = Encoder.encode({}, ResCode.OK)
                 else:

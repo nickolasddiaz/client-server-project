@@ -1,5 +1,6 @@
 import configparser
 import ipaddress
+import secrets
 
 
 class Settings:
@@ -20,14 +21,24 @@ class Settings:
         self.SERVER_ADDR: tuple[str, int] = (self.SERVER_IP, self.PORT)
         self.CLIENT_ADDR: tuple[str, int] = (self.CLIENT_IP, self.PORT)
 
+        self.JWT_SECRET_KEY: str = self.config.get('DONT SHARE WITH ANYONE', 'jwt_secret_key', fallback=secrets.token_hex(32))
+        self.AUTH_KEY: str = self.config.get('DONT SHARE WITH ANYONE', 'AUTH_KEY', fallback="")
+        self.config['DONT SHARE WITH ANYONE'] = {'jwt_secret_key': self.JWT_SECRET_KEY,
+                                                 'AUTH_KEY': self.AUTH_KEY,}
+
+        with open('config.ini', 'w') as configfile:
+            self.config.write(configfile)
+
 
     def save_changes(self):
         self.config['DEFAULT'] = {'CLIENT_IP'   : self.CLIENT_IP,
                                   'PORT'        : self.PORT,
                                   'SERVER_IP'   : self.SERVER_IP,
                                   'USERNAME'    : self.USERNAME,
-                                  'COMPRESS_LVL': self.COMPRESS_LVL
+                                  'COMPRESS_LVL': self.COMPRESS_LVL,
                                   }
+        self.config['DONT SHARE WITH ANYONE'] = {'jwt_secret_key': self.JWT_SECRET_KEY,
+                                                 'AUTH_KEY': self.AUTH_KEY,}
         with open('config.ini', 'w') as configfile:
             self.config.write(configfile)
 

@@ -70,6 +70,8 @@ class Command(Enum):
     EXIT = auto(), "Exit the program"
     VERIFY_RES = auto(), "Private cmd to verify a resource is a directory/file and exists"
     VERIFY_PAS = auto(), "Private cmd to verify a user/pass is correct"
+    VERIFY_AUTH = auto(), "Private cmd to verify JWT auth is correct"
+    STARTING_MSG = auto(), "Private cmd to get welcome message"
 
 
     def __new__(cls, num: int, desc: str):
@@ -80,11 +82,9 @@ class Command(Enum):
 
     @staticmethod
     def cmd_str() -> str:
-        header = "Available Commands:\n"
-
         # Convert Enum members to a list of lists, excluding the last one
         table_data = []
-        for command in list(Command)[:-2]:  # Excludes VERIFY_RES, VERIFY_PAS
+        for command in list(Command)[:-3]:  # Excludes VERIFY_RES, VERIFY_PAS, STARTING_MSG
             table_data.append([command.name, command.desc])
 
         return format_table(table_data, ["Commands", "Description"])
@@ -144,6 +144,8 @@ class KeyData(IntEnum):
     USER_NAME = auto()
     PASSWORD = auto()
     STATS = auto()
+    PLATFORM = auto()
+    AUTH_TOKEN = auto()
 
     EXISTS = auto()
     IS_DIR = auto()
@@ -190,6 +192,22 @@ def format_time(seconds: float) -> str:
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     else:
         return f"{minutes:02d}:{secs:02d}"
+
+
+def receive_msg(sock) -> bytes:
+    """
+    Receives the first 4 bytes as it's size
+    Returns: The complete message data as bytes, excluding the EOF marker.
+    """
+    size_chunk:bytes = sock.recv(4)
+    return sock.recv(size_chunk.from_bytes(4, byteorder='little'))
+
+def send_msg(sock, msg: bytes) -> None:
+    """
+    Sends the first 4 bytes as it's size
+    """
+    b_size = len(msg).to_bytes(4, byteorder='little')
+    sock.send(bytes(msg) + msg)
 
 
 

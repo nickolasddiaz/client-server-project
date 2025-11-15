@@ -16,6 +16,7 @@ from tkinter import filedialog, ttk
 class ClientGui(ClientInterface):
     def __init__(self):
         super().__init__()
+        self.PLATFORM: str = "GUI"
         self.try_login: bool = False
         self.try_connect: bool = False
         self.PORT_str = None
@@ -162,6 +163,9 @@ class ClientGui(ClientInterface):
 
     def app_error(self, status: ResCode) -> None:
         self.message_str.set(status.desc)
+        if status.is_auth_related():
+            self.sett.AUTH_KEY = ""
+            self.verify_userpass()
 
 
     def app_error_print(self, msg: str) -> None:

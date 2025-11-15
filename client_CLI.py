@@ -14,6 +14,7 @@ from type import Command, ResCode, format_table
 class ClientCli(ClientInterface):
     def __init__(self):
         super().__init__()
+        self.PLATFORM: str = "CLI"
         print(r"""  
                         | \ | (_) ___| | _____ | | __ _ ___( )   __ _ _ __   __| |                 
                         |  \| | |/ __| |/ / _ \| |/ _` / __|/   / _` | '_ \ / _` |                 
@@ -100,6 +101,10 @@ class ClientCli(ClientInterface):
         """
 
         self.app_error_print(status.desc)
+
+        if status.is_auth_related():
+            self.sett.AUTH_KEY = ""
+            self.verify_userpass()
 
     def app_print(self, msg: str) -> None:
         """
