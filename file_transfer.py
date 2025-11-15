@@ -1,5 +1,4 @@
 import io
-import os
 import time
 import zipfile
 from pathlib import Path
@@ -10,10 +9,13 @@ from zipstream import ZipStream
 
 from type import SIZE
 
+DELIMITER = b'\x00\x00EOF\x00\x00'
+
 
 class Transfer:
     @staticmethod
-    def send_file(conn, zip_file: ZipStream, num_bytes: int, progress_func: Callable[[int, int, int], None] = lambda num, num2, num3: None) -> bool:
+    def send_file(conn, zip_file: ZipStream, num_bytes: int,
+                  progress_func: Callable[[int, int, int], None] = lambda num, num2, num3: None) -> bool:
         """
         Upload a file by reading from file_path and sending num_bytes
 
@@ -46,8 +48,8 @@ class Transfer:
                 bytes_sent += len(chunk)
                 elapsed_bytes += len(chunk)
 
-            # Final progress update
-            conn.send(b'EOF')
+            # Send delimiter to signal end
+            conn.send(DELIMITER)
             print("sent file")
             return True
 
@@ -83,6 +85,7 @@ class Transfer:
             progress_func(0, 0, num_bytes)
             start_time: float = time.perf_counter()
             elapsed_bytes: int = 0
+            buffer = b''
 
             # Loop to receive data from the socket
             while True:
@@ -98,14 +101,27 @@ class Transfer:
                 # Receive data
                 filedata = conn.recv(SIZE)
 
-                if filedata == b'EOF':
-                    # Connection closed - transfer complete
+                if not filedata:
+                    # Connection closed unexpectedly
+                    raise ConnectionError("Connection closed before delimiter received")
+
+                buffer += filedata
+
+                # Check if delimiter is in buffer
+                if DELIMITER in buffer:
+                    # Split at delimiter and write only the data before it
+                    data, _ = buffer.split(DELIMITER, 1)
+                    in_memory_zip.write(data)
+                    bytes_received += len(data)
                     break
 
-                # write the received data directly into the memory buffer
-                in_memory_zip.write(filedata)
-                bytes_received += len(filedata)
-                elapsed_bytes += len(filedata)
+                # Write all but the last few bytes (in case delimiter is split across packets)
+                if len(buffer) > len(DELIMITER):
+                    write_size = len(buffer) - len(DELIMITER)
+                    in_memory_zip.write(buffer[:write_size])
+                    buffer = buffer[write_size:]
+                    bytes_received += write_size
+                    elapsed_bytes += write_size
 
             # Final progress update
             progress_func(99, 0, num_bytes)
@@ -115,7 +131,6 @@ class Transfer:
 
             with zipfile.ZipFile(in_memory_zip, 'r') as zip_ref:
                 zip_ref.extractall(directory_path)
-
 
             return True
 
